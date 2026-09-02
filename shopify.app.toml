@@ -1,0 +1,28 @@
+# Configurazione dell'app Shopify. Nessun segreto qui dentro:
+# client id e client secret restano nelle variabili d'ambiente.
+name = "Checkpoint — Cruscotto spedizioni"
+handle = "checkpoint-spedizioni"
+application_url = "https://checkpoint-spedizioni.vercel.app"
+embedded = true
+
+[access_scopes]
+# write_orders serve unicamente ai metafield di ticket e configurazione.
+#
+# read_all_orders (scope PROTETTO, va richiesto a Shopify e approvato):
+# deciso da Checkpoint l'1/09. Senza, l'Admin API restituisce solo gli ultimi
+# 60 giorni e lo fa in SILENZIO. Il cruscotto lavora si' su ordini recenti, ma
+# il presidio "ordini non consegnati piu' vecchi della finestra" esiste proprio
+# per gli ordini che non si chiudono mai: quelli invecchiano, superano i 60
+# giorni e diventerebbero invisibili all'app che deve sorvegliarli.
+# Verificato sul campo: 26CKPT2142 (evaso, DELIVERED, mai taggato) era gia'
+# oltre il muro il primo giorno di esercizio.
+scopes = "read_orders,read_all_orders,read_fulfillments,read_customers,write_orders"
+
+[auth]
+redirect_urls = [
+  "https://checkpoint-spedizioni.vercel.app/api/auth",
+  "https://checkpoint-spedizioni.vercel.app/api/auth/callback"
+]
+
+[app_preferences]
+url = "https://checkpoint-spedizioni.vercel.app"
