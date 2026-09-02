@@ -3,7 +3,7 @@
  * È il cuore del dominio: nessuna regola di business vive nelle schermate.
  */
 import { Config, ZonaId } from './config';
-import { giorniLavorativiInteri, addGiorniLavorativi, ymd, oreDa } from './dates';
+import { giorniLavorativiInteri, addGiorniLavorativi, oreDa } from './dates';
 import { leggiTag, CHIAVI_SOC, ChiaveSoc } from './tags';
 import { StatoNormalizzato, STATI, statoDaEvento, provaUscitaMagazzino } from './status';
 import { SnapshotOrdine, SnapshotSpedizione, leggiSnapshot } from './snapshot';
@@ -217,7 +217,6 @@ function zonaDi(o: ShopifyOrdine, cfg: Config): ZonaId {
 
 export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): OrdineApp {
   const t = leggiTag(o.tags);
-  const oggi = ymd(ora);
 
   /* --- ramo commerciale --- */
   const presenti = CHIAVI_SOC.filter(k => t.soc[k as ChiaveSoc]);
@@ -320,12 +319,13 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
     /* Primo in lista perche' e' il piu' grave: soldi resi e merce partita insieme. */
     if (rimborsatoTotale && fase === 'da_monitorare') alertDati.push('rimborsato_in_viaggio');
     if (t.tagAlert) alertDati.push('tag_alert');
+    /* Il tag manca o e' scritto male: quello si', e' un dato da correggere.
+       Una data SUPERATA no: e' un ritardo, non un errore, e vive in "Da spedire".
+       Vedi la nota in alerts.ts — non reintrodurre `data_passata`. */
     if (!t.previsteGrezze.length) alertDati.push('data_mancante');
     else if (!t.previsteValide.length) alertDati.push('data_non_valida');
-    else if (t.prevista! < oggi && fase === 'da_spedire') alertDati.push('data_passata');
     if (identificabile && !socCompleta) alertDati.push('soc_incompleta');
-    /* NIENTE alert per il tracking assente: vedi la nota in alerts.ts.
-       Le LDV delle societa' sportive non nascono ogni giorno, l'assenza e' normale. */
+    /* NIENTE alert per il tracking assente: stessa nota, stessa ragione. */
     if (t.previsteGrezze.length > 1 || t.duplicati.length) alertDati.push('tag_conflitto');
     if (stato === 'sconosciuto') alertDati.push('stato_non_interpretabile');
   }

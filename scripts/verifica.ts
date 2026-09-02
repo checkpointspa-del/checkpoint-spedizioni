@@ -568,19 +568,29 @@ test('in un ordine con due spedizioni, quella consegnata non guida più lo stato
     'gli alert seguono la spedizione ancora attiva, non quella già consegnata');
 });
 
-/* ---------- il tracking assente non è un difetto (02/09) ---------- */
-test('un ordine senza tracking non produce piu’ alcun alert sui dati', () => {
-  // prevista superata e nessuna LDV: prima uscivano `data_passata` E `tracking_mancante`
+/* ---------- in "Dati da sistemare" solo errori veri (02/09) ---------- */
+test('data prevista superata e nessuna LDV: NESSUN alert sui dati', () => {
+  // prima uscivano `data_passata` E `tracking_mancante`: nessuno dei due e' un errore
   const o = classifica(ordine({ tags: ['spedizione_prevista=2026-08-20'] }), CONFIG_DEFAULT, ORA);
   assert.equal(o.fase, 'da_spedire');
   assert.equal(o.tracking, null);
-  assert.deepEqual(o.alertDati, ['data_passata'], 'resta solo la data superata');
-  assert.ok(!(o.alertDati as string[]).includes('tracking_mancante'));
+  assert.deepEqual(o.alertDati, [],
+    'un ritardo non e’ un dato da correggere: si vede in Da spedire, blocco In ritardo');
 });
 
-test('la causa tracking_mancante non esiste piu’ nella tassonomia', () => {
-  assert.ok(!Object.keys(CAUSE_DATI).includes('tracking_mancante'),
+test('le cause tracking_mancante e data_passata non esistono piu’ nella tassonomia', () => {
+  const cause = Object.keys(CAUSE_DATI);
+  assert.ok(!cause.includes('tracking_mancante'),
     'reintrodurla riempirebbe la vista Dati di righe su cui nessuno deve agire');
+  assert.ok(!cause.includes('data_passata'),
+    'sforare una data e’ un ritardo, non un errore: correggere il tag sarebbe lavoro inventato');
+});
+
+test('il tag data mancante o scritto male resta un errore vero', () => {
+  const senza = classifica(ordine({ tags: [] }), CONFIG_DEFAULT, ORA);
+  assert.deepEqual(senza.alertDati, ['data_mancante']);
+  const rotto = classifica(ordine({ tags: ['spedizione_prevista=20/08/2026'] }), CONFIG_DEFAULT, ORA);
+  assert.deepEqual(rotto.alertDati, ['data_non_valida']);
 });
 
 /* ---------- niente ticket senza una spedizione che il corriere abbia davvero ---------- */

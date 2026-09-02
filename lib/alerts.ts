@@ -5,19 +5,29 @@ export const ORDINE_GRAVITA: Record<Gravita, number> =
   { informativo: 0, attenzione: 1, urgente: 2, critico: 3 };
 
 export type CausaDati =
-  | 'tag_alert' | 'data_mancante' | 'data_non_valida' | 'data_passata'
+  | 'tag_alert' | 'data_mancante' | 'data_non_valida'
   | 'soc_incompleta' | 'tag_conflitto' | 'stato_non_interpretabile'
   | 'rimborsato_in_viaggio';
 
 /**
- * NON esiste piu' la causa `tracking_mancante`.
+ * QUESTA VISTA CONTIENE SOLO ERRORI VERI. Due cause sono state rimosse il 02/09
+ * perche' non lo erano, e vanno lasciate fuori.
  *
- * Deciso da Checkpoint il 02/09: l'assenza di tracking NON e' un dato da sistemare.
- * Le LDV per le societa' sportive non si creano ogni giorno — un ordine puo' restare
- * legittimamente senza codice per giorni. Segnalarlo come alert "urgente" produceva
- * decine di righe rosse su cui nessuno doveva agire, e faceva perdere di vista gli
- * alert veri. Un ordine senza tracking si vede gia' dove serve: nella fase di ritiro
- * di "Da spedire". Non reintrodurre la causa.
+ * `tracking_mancante` — l'assenza di tracking non e' un dato da sistemare. Le LDV per
+ * le societa' sportive non si creano ogni giorno: un ordine puo' restare legittimamente
+ * senza codice per giorni. Un ordine senza tracking si vede gia' dove serve, nella fase
+ * di ritiro di "Da spedire".
+ *
+ * `data_passata` — una data prevista superata non e' un errore di dato, e' un RITARDO.
+ * Decisione Checkpoint, testuale: *"se abbiamo sforato con una data non va segnato
+ * errore, li voglio solo gli errori veri. Se abbiamo sforato siamo in ritardo, non ho
+ * il tempo di modificare la data a tutti"*. L'evidenza del ritardo esiste gia' ed e'
+ * quella giusta: il blocco "In ritardo" dentro *Da spedire*, piu' il filtro rapido
+ * "Data superata". Chiedere all'operatore di riscrivere il tag su decine di ordini per
+ * far sparire un alert e' lavoro inventato.
+ *
+ * Il criterio: in "Dati da sistemare" entra solo cio' che qualcuno puo' e deve
+ * CORREGGERE. Un ritardo non si corregge cambiando un tag, si smaltisce spedendo.
  */
 
 export const CAUSE_DATI: Record<CausaDati, { label: string; gravita: Gravita; azione: string }> = {
@@ -27,8 +37,6 @@ export const CAUSE_DATI: Record<CausaDati, { label: string; gravita: Gravita; az
                     azione: 'Aggiungere il tag spedizione_prevista=AAAA-MM-GG all’ordine.' },
   data_non_valida:{ label: 'Data di spedizione prevista non valida', gravita: 'urgente',
                     azione: 'Correggere il formato del tag: solo ISO AAAA-MM-GG.' },
-  data_passata:   { label: 'Data prevista superata', gravita: 'urgente',
-                    azione: 'Spedire oppure aggiornare la data prevista.' },
   soc_incompleta: { label: 'Dati società incompleti', gravita: 'attenzione',
                     azione: 'Completare i tag società mancanti. Non è un ordine B2B.' },
   tag_conflitto:  { label: 'Tag duplicati o in conflitto', gravita: 'attenzione',
