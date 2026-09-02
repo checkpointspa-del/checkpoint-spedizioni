@@ -4,7 +4,7 @@ import type { OrdineApp } from '@/lib/classify';
 import { STATI, statoDaEvento } from '@/lib/status';
 import { STATI_TICKET, StatoTicket, CAUSE_DATI, CAUSE_SPEDIZIONE } from '@/lib/alerts';
 import { api } from '@/lib/client';
-import { Badge, GruppoBadge, StatoBadge, D, DT, trascorso, ND, BADGE_GRAVITA, TicketBadge } from '../ui';
+import { Tracking, Badge, GruppoBadge, StatoBadge, D, DT, trascorso, ND, BADGE_GRAVITA, TicketBadge } from '../ui';
 
 type Scheda = 'dettaglio' | 'cronologia' | 'ticket';
 
@@ -100,7 +100,7 @@ function SchedaDettaglio({ o }: { o: OrdineApp }) {
         <div><span>Articoli</span><b>{o.articoli}</b></div>
         <div><span>Zona / finestra</span><b>{o.zona} — vedi configurazione</b></div>
         <div><span>Corriere</span><b>{o.corriere ?? '—'}</b></div>
-        <div><span>Tracking</span><b className="tr-code">{o.tracking ?? '—'}</b></div>
+        <div><span>Tracking</span><Tracking codice={o.tracking} url={o.trackingUrl} forte /></div>
         <div><span>Fase di ritiro</span><b>{o.faseRitiro}</b></div>
         <div><span>Spedizione prevista</span><b>{o.prevista ? D(o.prevista) : <span style={{ color: 'var(--crit)' }}>assente</span>}</b></div>
         <div><span>Uscita dal magazzino</span><b>{o.presaAt ? DT(o.presaAt) : 'non ancora registrata'}
@@ -185,7 +185,7 @@ function SchedaCronologia({ o }: { o: OrdineApp }) {
       {o.spedizioni.map((s, i) => (
         <div className="card" key={s.fulfillmentId} style={{ marginBottom: 12 }}>
           <h2>Spedizione {i + 1} di {o.spedizioni.length}
-            <span className="right">{s.corriere ?? 'corriere non indicato'} · {s.tracking ?? 'nessun tracking'}</span></h2>
+            <span className="right">{s.corriere ?? 'corriere non indicato'} · <Tracking codice={s.tracking} url={s.trackingUrl} vuoto="nessun tracking" /></span></h2>
           <div className="pad">
             {!s.eventi?.length && <div className="empty">Nessun evento registrato dal corriere. {ND}</div>}
             {!!s.eventi?.length && (

@@ -1,7 +1,7 @@
 'use client';
 import type { OrdineApp } from '@/lib/classify';
 import { CAUSE_SPEDIZIONE, STATI_TICKET } from '@/lib/alerts';
-import { Badge, TicketBadge, D, trascorso, Vuoto, b2bInFondo } from '../ui';
+import { Tracking, Badge, TicketBadge, D, trascorso, Vuoto, b2bInFondo } from '../ui';
 import { BarraRapidi, Rapido } from './Filtri';
 
 export default function Ticket(
@@ -44,7 +44,7 @@ export default function Ticket(
                   <td>{t.corriere ?? o.corriere ?? '—'}</td>
                   <td>{o.alertSpedizione.length ? CAUSE_SPEDIZIONE[o.alertSpedizione[0].causa].label : <span className="muted">—</span>}</td>
                   <td><TicketBadge stato={t.stato} /></td>
-                  <td>{t.riferimento ? <span className="tr-code">{t.riferimento}</span> : <span className="muted">—</span>}</td>
+                  <td><Tracking codice={t.riferimento} url={t.riferimento === o.tracking ? o.trackingUrl : null} /></td>
                   <td>{t.operatore ?? <span className="muted">—</span>}</td>
                   <td className="num">{t.apertoIl ? D(t.apertoIl) : '—'}</td>
                   <td className="num">{t.aggiornatoIl ? trascorso(t.aggiornatoIl) : '—'}</td>

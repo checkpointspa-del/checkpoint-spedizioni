@@ -55,8 +55,13 @@ export interface SnapshotOrdine {
   v: number;
   /** quando il riassunto è stato scritto */
   aggiornatoIl: string;
-  /** chi lo ha scritto: `webhook` | `backfill` | `ricalcolo-app` */
-  sorgente: 'webhook' | 'backfill' | 'ricalcolo-app';
+  /**
+   * Chi lo ha scritto. `creazione` e' il percorso di checkpoint-tracking che scrive il
+   * riassunto quando il fulfillment nasce o cambia tracking: in quel momento gli eventi
+   * possono non esserci ancora, quindi produce riassunti con `numeroEventi: 0`.
+   * Va dichiarato qui, non subito in silenzio.
+   */
+  sorgente: 'webhook' | 'backfill' | 'ricalcolo-app' | 'creazione';
   spedizioni: SnapshotSpedizione[];
 }
 

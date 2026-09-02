@@ -25,6 +25,33 @@ export function Badge({ tipo, children }: { tipo: string; children: React.ReactN
   return <span className={`b b-${tipo}`}>{children}</span>;
 }
 
+/**
+ * Codice di tracking, cliccabile quando una pagina esiste.
+ *
+ * UNICO punto in cui un tracking viene disegnato: liste, alert e dettaglio passano
+ * tutti di qui, cosi' il comportamento del clic e' identico ovunque e non si sfilaccia.
+ *
+ * Tre dettagli che sembrano cosmetici e non lo sono:
+ *  - `stopPropagation`: le righe delle tabelle aprono la scheda di dettaglio al clic.
+ *    Senza, un clic sul tracking aprirebbe ANCHE il pannello, sopra la nuova scheda.
+ *  - `rel="noopener noreferrer"`: la pagina aperta non deve poter toccare l'app.
+ *  - senza URL resta testo semplice, non un link morto.
+ */
+export function Tracking(
+  { codice, url, vuoto = '—', forte = false }:
+  { codice?: string | null; url?: string | null; vuoto?: string; forte?: boolean }
+) {
+  if (!codice) return <span className="muted">{vuoto}</span>;
+  const T = forte ? 'b' : 'span';
+  if (!url) return <T className="tr-code">{codice}</T>;
+  return (
+    <a className="tr-code tr-link" href={url} target="_blank" rel="noopener noreferrer"
+       onClick={e => e.stopPropagation()} title="Apri la pagina di tracking">
+      {codice}<span className="tr-ext" aria-hidden>↗</span>
+    </a>
+  );
+}
+
 const BADGE_STATO: Record<string, string> = {
   pre: 'neutral', via: 'info', fine: 'ok', alt: 'urg'
 };

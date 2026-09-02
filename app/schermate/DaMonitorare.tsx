@@ -2,7 +2,7 @@
 import type { OrdineApp } from '@/lib/classify';
 import type { Config } from '@/lib/config';
 import { STATI } from '@/lib/status';
-import { Badge, Progresso, Finestra, TicketBadge, DT, trascorso, Vuoto, b2bInFondo, BADGE_GRAVITA } from '../ui';
+import { Tracking, Badge, Progresso, Finestra, TicketBadge, DT, trascorso, Vuoto, b2bInFondo, BADGE_GRAVITA } from '../ui';
 import { BarraFiltri, BarraRapidi, DefFiltro, Rapido, applica } from './Filtri';
 
 export default function DaMonitorare(
@@ -82,7 +82,7 @@ export default function DaMonitorare(
                 <td>{o.isB2B ? <Badge tipo="b2b">B2B</Badge> :
                   <div className="stack">{o.socNome}<span className="s2">{o.categoria}</span></div>}</td>
                 <td>{o.corriere ?? <span className="muted">—</span>}</td>
-                <td><span className="tr-code">{o.tracking ?? '—'}</span></td>
+                <td><Tracking codice={o.tracking} url={o.trackingUrl} /></td>
                 <td className="num">{DT(o.presaAt)}</td>
                 <td className="num"><div className="stack">{trascorso(o.ultimoEventoAt)}
                   <span className="s2">{o.ultimoEventoLuogo ?? ''}</span></div></td>

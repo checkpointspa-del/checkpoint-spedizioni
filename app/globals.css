@@ -195,3 +195,10 @@ td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .collapse-head .hint{margin-left:auto;font-size:11.5px;color:var(--ink-3);font-weight:400}
 .collapse-head[aria-expanded="true"]{border-bottom-left-radius:0;border-bottom-right-radius:0}
 .collapse-head[aria-expanded="true"] + .card{border-top-left-radius:0;border-top-right-radius:0}
+
+/* Codice di tracking cliccabile: porta alla pagina di tracking dello store.
+   Il codice resta leggibile come prima, il link si annuncia solo al passaggio. */
+a.tr-link{color:var(--accent);text-decoration:none;cursor:pointer}
+a.tr-link:hover{text-decoration:underline}
+a.tr-link .tr-ext{font-size:9.5px;margin-left:3px;opacity:.55;vertical-align:1px}
+a.tr-link:hover .tr-ext{opacity:1}

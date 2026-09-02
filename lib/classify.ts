@@ -49,6 +49,31 @@ export type Esito = 'consegnato' | 'in_corso' | 'annullato' | 'rimborsato';
 export type FaseRitiro = 'senza_tracking' | 'tracking_creato' | 'in_attesa_ritiro' | 'preso_in_carico';
 
 export interface SpedizioneApp extends SnapshotSpedizione {
+  /**
+   * Pagina di tracking, come la fornisce Shopify in `trackingInfo.url`.
+   *
+   * Su questo store punta alla pagina di tracking del negozio
+   * (`check-point-store.it/pages/tracking-area?o=…&t=…`), non al portale del vettore:
+   * e' la STESSA pagina che vede il cliente, quindi l'operatore al telefono guarda
+   * esattamente cio' che gli viene descritto.
+   *
+   * NON si costruisce a mano da corriere + codice: una mappa di URL per vettore si
+   * rompe in silenzio appena un corriere cambia formato, e un corriere nuovo resta
+   * senza link finche' qualcuno non se ne accorge. Qui l'URL lo da' la piattaforma.
+   *
+   * Vive fuori dallo snapshot perche' non e' uno stato da ricordare: e' un campo
+   * dell'ordine, sempre disponibile in entrambe le query.
+   */
+  trackingUrl: string | null;
+  /**
+   * Consegnata davvero.
+   *
+   * Vera se il riassunto ha una data di consegna OPPURE se Shopify dichiara il
+   * fulfillment `displayStatus: DELIVERED`. Le due fonti non sono ridondanti: il
+   * riassunto e' una cache e puo' restare indietro, `displayStatus` e' la piattaforma.
+   * Vedi la nota su `consegnaAt` piu' sotto in classifica().
+   */
+  consegnata: boolean;
   parziale: boolean;
   /** fulfillment CANCELLED: non governa lo stato e non conta per la consegna */
   annullata: boolean;
@@ -86,6 +111,8 @@ export interface OrdineApp {
   spedizioni: SpedizioneApp[];
   multiSped: boolean;
   tracking: string | null; corriere: string | null;
+  /** Pagina di tracking della spedizione guida. Vedi SpedizioneApp.trackingUrl. */
+  trackingUrl: string | null;
   snapshotPresente: boolean; snapshotSorgente: SnapshotOrdine['sorgente'] | null; snapshotAggiornatoIl: string | null;
 
   // stato
@@ -239,7 +266,18 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
       ultimoEventoAt: null, ultimoEventoStatus: null, ultimoEventoMessaggio: null, ultimoEventoLuogo: null,
       numeroEventi: 0
     };
-    return { ...s, parziale: o.fulfillments.length > 1,
+    /* UNA CACHE NON PUO' SMENTIRE LA PIATTAFORMA.
+       Caso reale 26CKPT2619 (02/09): il tracking era sbagliato ed e' stato corretto a
+       mano. checkpoint-tracking ha riscritto il riassunto dal percorso `creazione` un
+       secondo dopo l'evento DELIVERED, salvandolo con `numeroEventi: 0` e
+       `consegnaAt: null`. Risultato: Shopify diceva DELIVERED, il riassunto diceva di
+       no, e l'ordine restava per sempre nel perimetro operativo.
+       `displayStatus` sta gia' nella query di lista e non costa nulla: quando dichiara
+       DELIVERED vince lui, sempre. Il riassunto resta la fonte delle DATE, mai quella
+       del fatto che la consegna sia avvenuta. */
+    const consegnata = Boolean(s.consegnaAt) || f.displayStatus === 'DELIVERED';
+    return { ...s, trackingUrl: tr?.url ?? null, consegnata,
+             parziale: o.fulfillments.length > 1,
              annullata: f.status === 'CANCELLED', eventi: f.events?.nodes ?? null };
   });
 
@@ -255,13 +293,16 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
   const guida = conTracking.length ? conTracking : attive;
 
   const presate = guida.map(s => s.presaAt).filter(Boolean) as string[];
-  const consegnate = guida.map(s => s.consegnaAt).filter(Boolean) as string[];
-  const tutteConsegnate = guida.length > 0 && consegnate.length === guida.length;
+  /* Il FATTO della consegna e la sua DATA sono due cose distinte: un fulfillment puo'
+     risultare DELIVERED senza che il riassunto ne conosca il timestamp. Il perimetro si
+     decide sul fatto; la data resta quella vera, o resta assente. */
+  const tutteConsegnate = guida.length > 0 && guida.every(s => s.consegnata);
+  const dateConsegna = guida.map(s => s.consegnaAt).filter(Boolean) as string[];
 
   const trackAt = min(guida.map(s => s.trackAt));
   const presaAt = presate.length ? presate.slice().sort()[0] : null;
   const presaAtUltima = presate.length === guida.length && presate.length ? presate.slice().sort().pop()! : null;
-  const consegnaUltima = tutteConsegnate ? consegnate.slice().sort().pop()! : null;
+  const consegnaUltima = tutteConsegnate && dateConsegna.length ? dateConsegna.slice().sort().pop()! : null;
 
   /* --- esito e fase --- */
   /* Rimborsi: totale e parziale sono due cose diverse e non vanno confuse.
@@ -283,14 +324,18 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
   /* --- stato normalizzato dell'ordine ---
      Regola terminale: una spedizione consegnata non si monitora più. Se l'ordine ne ha
      altre ancora in viaggio, lo stato e gli alert seguono la prima NON consegnata. */
-  const principale = guida.find(x => !x.consegnaAt) ?? guida[0];
+  const principale = guida.find(x => !x.consegnata) ?? guida[0];
   const oreUltimoEvento = oreDa(principale?.ultimoEventoAt ?? null, ora);
   let stato: StatoNormalizzato =
       !principale?.tracking ? 'senza_tracking'
     : principale.ultimoEventoStatus
       ? statoDaEvento(principale.ultimoEventoStatus, principale.ultimoEventoMessaggio)
       : 'tracking_creato';
-  if (t.tagRientro) stato = 'rientro_mittente';
+  /* Se la spedizione guida risulta consegnata, lo stato e' quello e basta: senza questa
+     riga un fulfillment DELIVERED privo di eventi nel riassunto sarebbe mostrato come
+     "Tracking creato", cioe' l'esatto contrario della realta'. */
+  if (principale?.consegnata) stato = 'consegnata';
+  if (t.tagRientro && stato !== 'consegnata') stato = 'rientro_mittente';
   let statoReale: StatoNormalizzato | null = null;
   if (!presaAt && principale?.tracking && stato === 'tracking_creato'
       && (oreDa(trackAt, ora) ?? 0) > 12) stato = 'in_attesa_ritiro';
@@ -430,6 +475,7 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
     tagAlert: t.tagAlert, tagProblema: t.tagProblema, tagRientro: t.tagRientro,
     spedizioni, multiSped: guida.length > 1,
     tracking: principale?.tracking ?? null, corriere: principale?.corriere ?? null,
+    trackingUrl: principale?.trackingUrl ?? null,
     snapshotPresente: Boolean(snapSalvato),
     snapshotSorgente: snapSalvato?.sorgente ?? null,
     snapshotAggiornatoIl: snapSalvato?.aggiornatoIl ?? null,

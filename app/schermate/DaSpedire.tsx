@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import type { OrdineApp } from '@/lib/classify';
-import { Badge, D, Vuoto, b2bInFondo } from '../ui';
+import { Tracking, Badge, D, Vuoto, b2bInFondo } from '../ui';
 import { BarraFiltri, BarraRapidi, DefFiltro, Rapido, applica } from './Filtri';
 
 const FASI: Record<string, string> = {
@@ -32,7 +32,7 @@ function Tabella({ lista, oggi, apri }:
               : o.prevista < oggi ? <Badge tipo="crit">{D(o.prevista)}</Badge>
               : o.prevista === oggi ? <Badge tipo="warn">oggi</Badge> : D(o.prevista)}</td>
             <td><Badge tipo={o.faseRitiro === 'in_attesa_ritiro' ? 'warn' : 'neutral'}>{FASI[o.faseRitiro]}</Badge></td>
-            <td>{o.tracking ? <span className="tr-code">{o.tracking}</span> : <span className="muted">—</span>}</td>
+            <td><Tracking codice={o.tracking} url={o.trackingUrl} /></td>
             <td>{o.alertDati.length ? <Badge tipo="warn">{o.alertDati.length} dati</Badge> : null}
                 {o.alertSpedizione.length ? <> <Badge tipo="urg">{o.alertSpedizione.length} sped.</Badge></> : null}
                 {!o.alertDati.length && !o.alertSpedizione.length && <span className="muted">—</span>}</td>

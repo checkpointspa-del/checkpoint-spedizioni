@@ -679,3 +679,93 @@ test('il rimborso parziale non tocca il perimetro: resta merce da spedire', () =
   assert.equal(o.fase, 'da_spedire');
   assert.deepEqual(o.alertDati, []);
 });
+
+/* ---------- tracking cliccabile (02/09) ---------- */
+const fulfillmentConUrl = (id: string, tracking: string, url: string, eventi: any[]) =>
+  ({ id, createdAt: '2026-08-28T12:00:00+02:00', status: 'SUCCESS', displayStatus: null,
+     trackingInfo: [{ number: tracking, company: 'Poste Italiane', url }],
+     events: { nodes: eventi } });
+
+test('la pagina di tracking arriva da Shopify e non si costruisce a mano', () => {
+  const url = 'https://www.check-point-store.it/pages/tracking-area?o=17779050447197&t=zTn0L4bUE5Ru61H8';
+  const o = classifica(ordine({
+    tags: ['spedizione_prevista=2026-08-24'],
+    fulfillments: [fulfillmentConUrl('f1', '3UW1JS2039041', url,
+      [evento('CARRIER_PICKED_UP', '2026-08-30T17:00:00+02:00', 'Ritirata')])]
+  }), CONFIG_DEFAULT, ORA);
+  assert.equal(o.tracking, '3UW1JS2039041');
+  assert.equal(o.trackingUrl, url);
+  assert.equal(o.spedizioni[0].trackingUrl, url);
+});
+
+test('senza url il codice resta testo: mai un link finto', () => {
+  const o = classifica(ordine({
+    fulfillments: [fulfillment('f1', 'SENZAURL', [])]
+  }), CONFIG_DEFAULT, ORA);
+  assert.equal(o.tracking, 'SENZAURL');
+  assert.equal(o.trackingUrl, null);
+});
+
+test('con due spedizioni il link segue quella che guida, non la consegnata', () => {
+  const consegnata = fulfillmentConUrl('f1', 'AAA', 'https://esempio/consegnata',
+    [evento('CARRIER_PICKED_UP', '2026-08-24T17:00:00+02:00', 'Ritirata'),
+     evento('DELIVERED', '2026-08-26T10:00:00+02:00', 'Consegnata')]);
+  const inViaggio = fulfillmentConUrl('f2', 'BBB', 'https://esempio/in-viaggio',
+    [evento('CARRIER_PICKED_UP', '2026-08-30T17:00:00+02:00', 'Ritirata')]);
+  const o = classifica(ordine({ fulfillments: [consegnata, inViaggio] }), CONFIG_DEFAULT, ORA);
+  assert.equal(o.tracking, 'BBB');
+  assert.equal(o.trackingUrl, 'https://esempio/in-viaggio');
+});
+
+/* ---------- il riassunto non puo’ smentire Shopify (02/09) ---------- */
+test('caso 26CKPT2619: DELIVERED su Shopify, riassunto vecchio che dice di no', () => {
+  /* Riproduce il caso reale: tracking corretto a mano, checkpoint-tracking riscrive il
+     riassunto dal percorso `creazione` un secondo dopo l’evento DELIVERED e lo salva con
+     numeroEventi 0 e consegnaAt null. Prima di questa regola l’ordine restava per sempre
+     nel perimetro operativo. */
+  const snapshotVecchio = JSON.stringify({
+    v: 1, aggiornatoIl: '2026-09-02T09:24:35.082Z', sorgente: 'creazione',
+    spedizioni: [{
+      fulfillmentId: 'gid://shopify/Fulfillment/8236269896029',
+      tracking: 'JJD149990200057895123', corriere: 'DHL eCommerce',
+      trackAt: '2026-08-07T06:46:46Z', presaAt: null, presaStatus: null,
+      presaApprossimata: false, consegnaAt: null, ultimoEventoAt: null,
+      ultimoEventoStatus: null, ultimoEventoMessaggio: null, ultimoEventoLuogo: null,
+      numeroEventi: 0
+    }]
+  });
+  const o = classifica(ordine({
+    tags: ['exported=1'],
+    displayFulfillmentStatus: 'FULFILLED',
+    snapshot: { value: snapshotVecchio, updatedAt: '2026-09-02T09:24:35Z' },
+    fulfillments: [{
+      id: 'gid://shopify/Fulfillment/8236269896029',
+      createdAt: '2026-08-07T06:46:46Z', status: 'SUCCESS', displayStatus: 'DELIVERED',
+      trackingInfo: [{ number: 'JJD149990200057895123', company: 'DHL eCommerce', url: null }]
+    } as any]
+  }), CONFIG_DEFAULT, ORA);
+
+  assert.equal(o.spedizioni[0].consegnata, true, 'displayStatus DELIVERED vince sul riassunto');
+  assert.equal(o.fase, 'consegnato', 'una volta consegnato deve sparire dalle viste operative');
+  assert.equal(o.esito, 'consegnato');
+  assert.equal(o.attivo, false);
+  assert.equal(o.stato, 'consegnata', 'mai piu’ “Tracking creato” su una consegna avvenuta');
+  assert.deepEqual(o.alertDati, [], 'niente alert su un ordine chiuso, nemmeno la data assente');
+  assert.deepEqual(o.alertSpedizione, []);
+  assert.equal(o.consegnaUltima, null, 'la data non si inventa: il riassunto non ce l’ha');
+});
+
+test('con due spedizioni serve che TUTTE risultino consegnate', () => {
+  const consegnataShopify = {
+    id: 'f1', createdAt: '2026-08-20T12:00:00+02:00', status: 'SUCCESS',
+    displayStatus: 'DELIVERED',
+    trackingInfo: [{ number: 'AAA', company: 'DHL eCommerce', url: null }]
+  } as any;
+  const o = classifica(ordine({
+    tags: ['spedizione_prevista=2026-08-24'],
+    fulfillments: [consegnataShopify, fulfillment('f2', 'BBB',
+      [evento('CARRIER_PICKED_UP', '2026-08-30T17:00:00+02:00', 'Ritirata')])]
+  }), CONFIG_DEFAULT, ORA);
+  assert.equal(o.fase, 'da_monitorare');
+  assert.equal(o.tracking, 'BBB', 'guida la spedizione ancora in viaggio');
+});

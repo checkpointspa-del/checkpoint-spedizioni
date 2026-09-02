@@ -1,7 +1,7 @@
 'use client';
 import type { OrdineApp } from '@/lib/classify';
 import { CAUSE_DATI, CAUSE_SPEDIZIONE, ORDINE_GRAVITA } from '@/lib/alerts';
-import { Badge, GruppoBadge, StatoBadge, TicketBadge, D, trascorso, Vuoto, BADGE_GRAVITA } from '../ui';
+import { Tracking, Badge, GruppoBadge, StatoBadge, TicketBadge, D, trascorso, Vuoto, BADGE_GRAVITA } from '../ui';
 import { BarraRapidi, Rapido } from './Filtri';
 
 /** Alert sui DATI dell'ordine: tag e date. Distinti, anche visivamente, dagli alert di spedizione. */
@@ -47,7 +47,7 @@ export function AlertDati(
                 <div><span>Cliente</span>{o.cliente}</div>
                 <div><span>Categoria / atleta</span>{o.isB2B ? '—' : `${o.categoria} · ${o.atleta}`}</div>
                 <div><span>Data prevista</span>{o.prevista ? D(o.prevista) : <b style={{ color: 'var(--crit)' }}>assente</b>}</div>
-                <div><span>Tracking</span>{o.tracking ? <span className="tr-code">{o.tracking}</span> : <span className="muted">nessuno</span>}</div>
+                <div><span>Tracking</span><Tracking codice={o.tracking} url={o.trackingUrl} vuoto="nessuno" /></div>
                 <div><span>Fase</span>{o.fase === 'da_spedire' ? 'Da spedire' : 'Da monitorare'}</div>
               </div>
               <div className="act"><b>Azione consigliata:</b> {CAUSE_DATI[prima].azione}</div>
@@ -99,7 +99,7 @@ export function AlertSpedizione(
               </div>
               <div className="meta">
                 <div><span>Cliente</span>{o.cliente}</div>
-                <div><span>Tracking</span><span className="tr-code">{o.tracking ?? '—'}</span></div>
+                <div><span>Tracking</span><Tracking codice={o.tracking} url={o.trackingUrl} /></div>
                 <div><span>Ultimo evento</span>{o.ultimoEventoMessaggio ?? '—'}</div>
                 <div><span>Luogo</span>{o.ultimoEventoLuogo ?? '—'}</div>
                 <div><span>Fermo da</span>{trascorso(o.ultimoEventoAt)}</div>
