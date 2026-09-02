@@ -149,9 +149,6 @@ export interface OrdineApp {
   ricerca: string;
 }
 
-const max = (a: (string|null)[]) => { const v = a.filter(Boolean) as string[]; return v.length ? v.sort().pop()! : null; };
-const min = (a: (string|null)[]) => { const v = a.filter(Boolean) as string[]; return v.length ? v.sort()[0] : null; };
-
 /** Ricalcolo del riassunto dagli eventi, quando il metafield manca o è vecchio. */
 export function calcolaSnapshot(o: ShopifyOrdine, sorgente: SnapshotOrdine['sorgente'] = 'ricalcolo-app'): SnapshotOrdine {
   const spedizioni: SnapshotSpedizione[] = o.fulfillments.map(f => {
@@ -298,15 +295,31 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
   const conTracking = attive.filter(s => s.tracking);
   const guida = conTracking.length ? conTracking : attive;
 
-  const presate = guida.map(s => s.presaAt).filter(Boolean) as string[];
+  /* SPEDIZIONE GUIDA: la prima non consegnata. E' quella che l'operatore deve seguire,
+     ed e' quella — e SOLO quella — su cui si misurano tempi, fase e alert.
+
+     PERCHE' STA QUI E NON PIU' IN FONDO. Prima presaAt/trackAt erano aggregati su TUTTE
+     le spedizioni: il minimo fra i ritiri, il minimo fra le LDV. Con un ordine misto la
+     regola mentiva. Caso reale 26CKPT2620 (02/09): due colli, uno consegnato il 27/08 e
+     uno con LDV dell'11/08 e ZERO eventi, cioe' mai partito dal magazzino.
+     Ereditando il ritiro del collo consegnato, l'ordine risultava "da monitorare", con
+     una finestra di consegna calcolata su una data che non c'entrava nulla: da li'
+     `oltre_finestra`, un alert di spedizione e un ticket al corriere, per una merce che
+     il corriere non ha mai ricevuto.
+
+     I tempi di un collo non si ereditano da un altro collo. */
+  const principale = guida.find(x => !x.consegnata) ?? guida[0];
+
   /* Il FATTO della consegna e la sua DATA sono due cose distinte: un fulfillment puo'
      risultare DELIVERED senza che il riassunto ne conosca il timestamp. Il perimetro si
      decide sul fatto; la data resta quella vera, o resta assente. */
   const tutteConsegnate = guida.length > 0 && guida.every(s => s.consegnata);
   const dateConsegna = guida.map(s => s.consegnaAt).filter(Boolean) as string[];
+  const presate = guida.map(s => s.presaAt).filter(Boolean) as string[];
 
-  const trackAt = min(guida.map(s => s.trackAt));
-  const presaAt = presate.length ? presate.slice().sort()[0] : null;
+  const trackAt = principale?.trackAt ?? null;
+  const presaAt = principale?.presaAt ?? null;
+  /** Informativo: tutte le spedizioni dell'ordine sono uscite dal magazzino. */
   const presaAtUltima = presate.length === guida.length && presate.length ? presate.slice().sort().pop()! : null;
   const consegnaUltima = tutteConsegnate && dateConsegna.length ? dateConsegna.slice().sort().pop()! : null;
 
@@ -329,8 +342,8 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
 
   /* --- stato normalizzato dell'ordine ---
      Regola terminale: una spedizione consegnata non si monitora più. Se l'ordine ne ha
-     altre ancora in viaggio, lo stato e gli alert seguono la prima NON consegnata. */
-  const principale = guida.find(x => !x.consegnata) ?? guida[0];
+     altre ancora in viaggio, lo stato e gli alert seguono la prima NON consegnata
+     (`principale`, calcolata sopra insieme ai tempi). */
   const oreUltimoEvento = oreDa(principale?.ultimoEventoAt ?? null, ora);
   let stato: StatoNormalizzato =
       !principale?.tracking ? 'senza_tracking'
@@ -505,7 +518,7 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
     ultimoEventoLuogo: principale?.ultimoEventoLuogo ?? null,
     oreUltimoEvento,
     trackAt, presaAt,
-    presaApprossimata: guida.some(x => x.presaAt === presaAt && x.presaApprossimata),
+    presaApprossimata: Boolean(principale?.presaApprossimata),
     presaAtUltima,
     consegnaUltima,
     oreAttesaRitiro,

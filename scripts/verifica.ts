@@ -506,8 +506,13 @@ test('ordine con due spedizioni: consegnato solo quando lo sono entrambe', () =>
   assert.equal(parziale.multiSped, true);
   assert.equal(parziale.fase, 'da_monitorare', 'una consegna parziale non archivia l’ordine');
   assert.equal(parziale.consegnaUltima, null);
-  assert.equal(parziale.presaAt, '2026-08-24T17:00:00+02:00');
-  assert.equal(parziale.presaAtUltima, '2026-08-27T17:00:00+02:00');
+  /* I tempi seguono la spedizione GUIDA, cioe' la prima non consegnata: qui la 'B',
+     ritirata il 27. Prima si prendeva il ritiro piu' vecchio (24, quello della merce
+     gia' arrivata) e la finestra di consegna veniva calcolata su un collo che non era
+     piu' in viaggio. Vedi 26CKPT2620. */
+  assert.equal(parziale.presaAt, '2026-08-27T17:00:00+02:00');
+  assert.equal(parziale.presaAtUltima, '2026-08-27T17:00:00+02:00',
+    'informativo: tutte le spedizioni sono uscite dal magazzino');
 
   const completo = classifica(ordine({
     tags: ['spedizione_prevista=2026-08-24'],
@@ -820,4 +825,59 @@ test('un ordine che deve ancora partire non genera MAI un ticket', () => {
     assert.deepEqual(o.alertSpedizione, []);
     assert.ok(o.alertMagazzino.length, 'ma la segnalazione non si perde: vive in Da spedire');
   }
+});
+
+/* ---------- ordini misti: un collo consegnato, uno ancora fermo (02/09) ---------- */
+test('caso 26CKPT2620: un collo consegnato non fa credere che l’altro sia partito', () => {
+  /* Dati reali: f1 con LDV dell’11/08 e ZERO eventi (mai partita dal magazzino),
+     f2 consegnata il 27/08. Prima l’ordine ereditava il ritiro di f2, finiva in
+     "Da monitorare" con una finestra calcolata su una data che non c’entrava, sforava,
+     e produceva un alert di spedizione PIU’ un ticket al corriere — per una merce che
+     il corriere non ha mai ricevuto. */
+  const fermaDa22Giorni = {
+    id: 'gid://shopify/Fulfillment/8256419365213', createdAt: '2026-08-11T10:02:21Z',
+    status: 'SUCCESS', displayStatus: 'FULFILLED',
+    trackingInfo: [{ number: '3UW1JS2037465', company: 'Poste Italiane', url: null }],
+    events: { nodes: [] }
+  } as any;
+  const consegnata = {
+    id: 'gid://shopify/Fulfillment/8236283003229', createdAt: '2026-08-07T06:51:39Z',
+    status: 'SUCCESS', displayStatus: 'DELIVERED',
+    trackingInfo: [{ number: '3UW1JS2037052', company: 'Poste Italiane', url: null }],
+    events: { nodes: [evento('DELIVERED', '2026-08-27T12:43:25Z', '')] }
+  } as any;
+
+  // Shopify restituisce la piu' recente per prima: l'ordine dei fulfillment non conta.
+  const o = classifica(ordine({
+    displayFulfillmentStatus: 'FULFILLED',
+    tags: ['codice_soc=SPORTINGC2627', 'soc_nome=SPORTING CASTELLANA',
+           'soc_categoria=UNDER 14/15/16/17/18', 'soc_atleta=Paolo',
+           'spedizione_prevista=2026-08-21'],
+    fulfillments: [fermaDa22Giorni, consegnata]
+  }), CONFIG_DEFAULT, ORA);
+
+  assert.equal(o.tracking, '3UW1JS2037465', 'guida il collo ancora da spedire');
+  assert.equal(o.presaAt, null, 'il ritiro dell’altro collo non si eredita');
+  assert.equal(o.fase, 'da_spedire', 'il secondo collo deve ancora partire');
+  assert.equal(o.ritardoGG, 0, 'nessuna finestra di consegna: non e’ mai stato ritirato');
+  assert.deepEqual(o.alertSpedizione, [], 'il corriere non ha questo collo');
+  assert.equal(o.ticket, null, 'e quindi non c’e’ niente da contestargli');
+  assert.ok(o.alertMagazzino.some(a => a.causa === 'collo_non_partito'),
+    'ma il collo fermo da 22 giorni si vede in Da spedire, gravita’ critica');
+  assert.equal(o.gravitaMagazzino, 'critico');
+});
+
+test('lo stesso ordine con il collo residuo davvero in viaggio torna da monitorare', () => {
+  const inViaggio = fulfillment('f1', 'RESIDUO',
+    [evento('CARRIER_PICKED_UP', '2026-08-31T09:00:00+02:00', 'Ritirata')],
+    '2026-08-30T10:00:00Z');
+  const consegnata = {
+    id: 'f2', createdAt: '2026-08-07T06:51:39Z', status: 'SUCCESS', displayStatus: 'DELIVERED',
+    trackingInfo: [{ number: 'VECCHIA', company: 'Poste Italiane', url: null }],
+    events: { nodes: [evento('DELIVERED', '2026-08-27T12:43:25Z', '')] }
+  } as any;
+  const o = classifica(ordine({ fulfillments: [inViaggio, consegnata] }), CONFIG_DEFAULT, ORA);
+  assert.equal(o.fase, 'da_monitorare');
+  assert.equal(o.presaAt, '2026-08-31T09:00:00+02:00', 'la data e’ quella del collo che viaggia');
+  assert.deepEqual(o.alertMagazzino, []);
 });
