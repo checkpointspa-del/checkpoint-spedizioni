@@ -19,11 +19,11 @@ export type Vista = 'cruscotto' | 'societa' | 'spedire' | 'monitorare'
 const VISTE: Record<Vista, { titolo: string; icona: string; sottotitolo: string }> = {
   cruscotto:  { titolo: 'Cruscotto',              icona: '▦', sottotitolo: 'Panoramica operativa della giornata' },
   societa:    { titolo: 'Società sportive',       icona: '◈', sottotitolo: 'Società → categoria → atleta → ordini' },
-  spedire:    { titolo: 'Da spedire',             icona: '▤', sottotitolo: 'Ordini non ancora usciti dal magazzino' },
+  spedire:    { titolo: 'Da spedire',             icona: '▤', sottotitolo: 'Ordini non ancora usciti dal magazzino, colli fermi compresi' },
   monitorare: { titolo: 'Da monitorare',          icona: '◎', sottotitolo: 'Spedizioni prese in carico dal corriere' },
   dati:       { titolo: 'Dati da sistemare',      icona: '⚑', sottotitolo: 'Alert calcolati dall’app — nessun tag scritto su Shopify' },
-  alert:      { titolo: 'Alert spedizione',       icona: '▲', sottotitolo: 'Anomalie di tracking che possono richiedere un ticket' },
-  ticket:     { titolo: 'Ticket corrieri',        icona: '✉', sottotitolo: 'Registro dei ticket aperti con i vettori' },
+  alert:      { titolo: 'Alert spedizione',       icona: '▲', sottotitolo: 'Che cosa non va — solo su merce che il corriere ha già ritirato' },
+  ticket:     { titolo: 'Ticket corrieri',        icona: '✉', sottotitolo: 'Che cosa stiamo facendo — pratiche da aprire o già aperte col vettore' },
   config:     { titolo: 'Configurazione',         icona: '⚙', sottotitolo: 'Finestre, soglie ed eventi di presa in carico' }
 };
 
@@ -74,8 +74,8 @@ export default function Pagina() {
       [...new Set(a.filter(Boolean) as string[])].sort();
     return {
       gruppo: () => [
-        ...uniq(ordini.filter(o => !o.isB2B).map(o => o.socNome)).map(v => [v, v] as [string, string]),
-        ['B2B', 'B2B (in fondo)'] as [string, string]
+        ...uniq(ordini.filter(o => !o.isB2C).map(o => o.socNome)).map(v => [v, v] as [string, string]),
+        ['B2C', 'B2C (in fondo)'] as [string, string]
       ],
       corriere:  () => uniq(ordini.map(o => o.corriere)).map(v => [v, v] as [string, string]),
       paese:     () => uniq(ordini.map(o => o.destinazione.paese)).map(v => [v, v] as [string, string]),
@@ -91,7 +91,7 @@ export default function Pagina() {
     alert:      ordini.filter(o => o.alertSpedizione.length).length,
     critici:    ordini.filter(o => o.gravitaSpedizione === 'critico').length,
     ticket:     ordini.filter(o => o.ticketDaAprire || o.ticketAperto).length,
-    societa:    ordini.filter(o => !o.isB2B && o.attivo).length
+    societa:    ordini.filter(o => !o.isB2C && o.attivo).length
   }), [ordini]);
 
   const setF = (k: string, v: string) =>

@@ -29,8 +29,11 @@ export function indicatori(ordini: OrdineApp[]): Indicatore[] {
       nota: 'fuori finestra prevista', tono: 'k-urg', vai: { vista: 'monitorare', rapido: 'ritardo' } },
     { etichetta: 'Alert sui dati', valore: n(o => o.alertDati.length),
       nota: 'tag e date da sistemare', tono: 'k-warn', vai: { vista: 'dati' } },
+    { etichetta: 'Colli fermi nel nostro magazzino', valore: n(o => o.alertMagazzino.length),
+      nota: 'LDV creata, corriere mai passato', tono: 'k-crit', vai: { vista: 'spedire', rapido: 'fermi' } },
     { etichetta: 'Alert di spedizione', valore: n(o => o.alertSpedizione.length),
-      nota: `${n(o => o.gravitaSpedizione === 'critico')} critici`, tono: 'k-crit', vai: { vista: 'alert' } },
+      nota: `${n(o => o.gravitaSpedizione === 'critico')} critici · solo merce dal corriere`,
+      tono: 'k-crit', vai: { vista: 'alert' } },
     { etichetta: 'Ticket da aprire', valore: n(o => o.ticketDaAprire),
       nota: 'azione richiesta', tono: 'k-urg', vai: { vista: 'ticket', rapido: 'da_aprire' } },
     { etichetta: 'Ticket già aperti', valore: n(o => o.ticketAperto),
@@ -45,9 +48,9 @@ export default function Cruscotto(
   { ordini: OrdineApp[]; config: Config; vai: (v: Vista, rapido?: string) => void; apri: (id: string) => void }
 ) {
   const attivi = ordini.filter(o => o.attivo);
-  const gruppi = new Map<string, { b2b: boolean; tot: number; spedire: number; viaggio: number; ad: number; as: number }>();
+  const gruppi = new Map<string, { b2c: boolean; tot: number; spedire: number; viaggio: number; ad: number; as: number }>();
   for (const o of attivi) {
-    const g = gruppi.get(o.gruppo) ?? { b2b: o.isB2B, tot: 0, spedire: 0, viaggio: 0, ad: 0, as: 0 };
+    const g = gruppi.get(o.gruppo) ?? { b2c: o.isB2C, tot: 0, spedire: 0, viaggio: 0, ad: 0, as: 0 };
     g.tot++;
     if (o.fase === 'da_spedire') g.spedire++; else g.viaggio++;
     if (o.alertDati.length) g.ad++;
@@ -55,7 +58,7 @@ export default function Cruscotto(
     gruppi.set(o.gruppo, g);
   }
   const righe = [...gruppi.entries()]
-    .sort((a, b) => (a[1].b2b !== b[1].b2b ? (a[1].b2b ? 1 : -1) : a[0].localeCompare(b[0])));
+    .sort((a, b) => (a[1].b2c !== b[1].b2c ? (a[1].b2c ? 1 : -1) : a[0].localeCompare(b[0])));
 
   const topDati = ordini.filter(o => o.alertDati.length).slice(0, 6);
   const topSped = [...ordini.filter(o => o.alertSpedizione.length)]
@@ -75,14 +78,14 @@ export default function Cruscotto(
 
       <div className="card" style={{ marginTop: 14 }}>
         <h2>Società sportive <span className="muted" style={{ fontWeight: 400 }}>core business</span>
-          <span className="right">Il gruppo {config.etichettaB2B} resta sempre in fondo</span></h2>
+          <span className="right">Il gruppo {config.etichettaB2C} resta sempre in fondo</span></h2>
         <div className="tw">
           <table>
             <thead><tr><th>Gruppo</th><th>Attivi</th><th>Da spedire</th><th>In viaggio</th><th>Alert dati</th><th>Alert sped.</th></tr></thead>
             <tbody>
               {righe.map(([nome, g]) => (
-                <tr key={nome} className={g.b2b ? 'b2b-row' : ''}>
-                  <td>{g.b2b ? <Badge tipo="b2b">{config.etichettaB2B}</Badge> : <b>{nome}</b>}</td>
+                <tr key={nome} className={g.b2c ? 'b2c-row' : ''}>
+                  <td>{g.b2c ? <Badge tipo="b2c">{config.etichettaB2C}</Badge> : <b>{nome}</b>}</td>
                   <td className="num">{g.tot}</td><td className="num">{g.spedire}</td><td className="num">{g.viaggio}</td>
                   <td className="num">{g.ad ? <Badge tipo="warn">{g.ad}</Badge> : <span className="muted">0</span>}</td>
                   <td className="num">{g.as ? <Badge tipo="urg">{g.as}</Badge> : <span className="muted">0</span>}</td>

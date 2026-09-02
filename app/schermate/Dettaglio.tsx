@@ -94,7 +94,7 @@ function SchedaDettaglio({ o }: { o: OrdineApp }) {
       <div className="card"><h2>Ordine e spedizione</h2><div className="pad"><div className="kv">
         <div><span>Data ordine</span><b>{DT(o.ricezione)}</b></div>
         <div><span>Cliente</span><b>{o.cliente}</b></div>
-        <div><span>Società</span><b>{o.isB2B ? 'B2B (nessun tag società)' : o.socNome}</b></div>
+        <div><span>Società</span><b>{o.isB2C ? 'B2C (nessun tag società)' : o.socNome}</b></div>
         <div><span>Categoria</span><b>{o.categoria}</b></div>
         <div><span>Atleta</span><b>{o.atleta}</b></div>
         <div><span>Articoli</span><b>{o.articoli}</b></div>
@@ -139,7 +139,7 @@ function SchedaDettaglio({ o }: { o: OrdineApp }) {
             {o.tags.length ? o.tags.map(t => {
               const cattivo = t === 'alert' || (t.startsWith('spedizione_prevista=') && !/^\d{4}-\d{2}-\d{2}$/.test(t.split('=')[1] ?? ''));
               return <span key={t} className={`tag ${cattivo ? 'bad' : ''}`}>{t}</span>;
-            }) : <span className="muted small">Nessun tag — ordine classificato B2B.</span>}
+            }) : <span className="muted small">Nessun tag — ordine classificato B2C.</span>}
           </div>
           <div className="small muted" style={{ marginTop: 9 }}>
             L’app distingue il <b>tag sorgente</b> <code>alert</code> dall’<b>alert applicativo</b> calcolato,

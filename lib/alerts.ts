@@ -38,7 +38,7 @@ export const CAUSE_DATI: Record<CausaDati, { label: string; gravita: Gravita; az
   data_non_valida:{ label: 'Data di spedizione prevista non valida', gravita: 'urgente',
                     azione: 'Correggere il formato del tag: solo ISO AAAA-MM-GG.' },
   soc_incompleta: { label: 'Dati società incompleti', gravita: 'attenzione',
-                    azione: 'Completare i tag società mancanti. Non è un ordine B2B.' },
+                    azione: 'Completare i tag società mancanti. Non è un ordine B2C.' },
   tag_conflitto:  { label: 'Tag duplicati o in conflitto', gravita: 'attenzione',
                     azione: 'Rimuovere i tag duplicati, tenere un solo valore valido.' },
   stato_non_interpretabile: { label: 'Stato non interpretabile', gravita: 'urgente',
@@ -61,6 +61,26 @@ export type CausaSpedizione =
   | 'eccezione_corriere' | 'giacenza' | 'destinatario_assente' | 'indirizzo_errato'
   | 'danneggiata' | 'rifiutata' | 'smarrimento' | 'rientro_mittente'
   | 'non_riconosciuto' | 'non_interpretabile';
+
+/**
+ * DUE FAMIGLIE, DUE POSTI DIVERSI. Deciso il 02/09.
+ *
+ * La regola, testuale: *"se l'ordine deve ancora partire dal nostro magazzino non ha
+ * senso che sia in nessuno di quei due"* — cioe' ne' in «Alert spedizione» ne' in
+ * «Ticket corrieri».
+ *
+ * MAGAZZINO (queste tre) = la merce e' ancora da noi. Il corriere non ce l'ha, quindi
+ * non c'e' niente da contestargli: si guarda in magazzino, si sollecita il ritiro.
+ * Vivono in «Da spedire», che e' dove l'operatore lavora questi ordini.
+ *
+ * VETTORE (tutte le altre) = il corriere ha preso in carico la merce ed e' successo
+ * qualcosa. Solo queste vanno in «Alert spedizione», e solo da queste puo' nascere un
+ * ticket al vettore.
+ *
+ * Il discrimine non e' la causa ma la PRESA IN CARICO: `fase === 'da_monitorare'`.
+ */
+export const CAUSE_MAGAZZINO: readonly CausaSpedizione[] =
+  ['collo_non_partito', 'nessun_evento', 'mancata_presa'];
 
 export const CAUSE_SPEDIZIONE: Record<CausaSpedizione, { label: string; azione: string }> = {
   /**

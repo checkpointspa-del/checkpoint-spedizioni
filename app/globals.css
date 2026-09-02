@@ -7,7 +7,7 @@
   --accent:#2563EB; --accent-soft:#EFF4FF;
   --ok:#15803D; --ok-soft:#ECFDF3; --info:#1D4ED8; --info-soft:#EFF4FF;
   --warn:#B45309; --warn-soft:#FFF7ED; --urg:#C2410C; --urg-soft:#FFF1E7;
-  --crit:#B91C1C; --crit-soft:#FEF2F2; --b2b:#64748B; --b2b-soft:#F1F5F9;
+  --crit:#B91C1C; --crit-soft:#FEF2F2; --b2c:#64748B; --b2c-soft:#F1F5F9;
   --r:10px; --shadow:0 1px 2px rgba(15,23,42,.06),0 8px 24px -16px rgba(15,23,42,.25);
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 }
@@ -73,7 +73,7 @@ button{cursor:pointer;background:none;border:0}
 .b-urg{background:var(--urg-soft);color:var(--urg);border-color:#FED7C0}
 .b-crit{background:var(--crit-soft);color:var(--crit);border-color:#FECACA}
 .b-neutral{background:var(--surface-2);color:var(--ink-2);border-color:var(--line)}
-.b-b2b{background:var(--b2b-soft);color:var(--b2b);border-color:var(--line)}
+.b-b2c{background:var(--b2c-soft);color:var(--b2c);border-color:var(--line)}
 .b-soc{background:#F5F3FF;color:#6D28D9;border-color:#DDD6FE}
 
 .quick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
@@ -96,7 +96,7 @@ th{position:sticky;top:0;background:var(--surface-2);text-align:left;font-size:1
 td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
 tbody tr{cursor:pointer}
 tbody tr:hover{background:var(--accent-soft)}
-tbody tr.b2b-row{background:#FCFCFD}
+tbody tr.b2c-row{background:#FCFCFD}
 td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .ordref{font-weight:640;font-family:var(--mono);font-size:12.5px}
 .stack{display:flex;flex-direction:column;gap:1px}
@@ -173,7 +173,7 @@ td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .car{color:var(--ink-3);font-size:10px;width:10px;transition:transform .12s;display:inline-block}
 .car.open{transform:rotate(90deg)}
 .node .tail{margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
-.node.b2b .n1{background:var(--b2b-soft);color:var(--b2b)}
+.node.b2c .n1{background:var(--b2c-soft);color:var(--b2c)}
 .orders-in{padding:6px 14px 12px 60px;background:#FCFDFE;border-top:1px solid var(--line)}
 .mini{width:100%;border-collapse:collapse;font-size:12.3px}
 .mini td{padding:6px 8px;border-bottom:1px solid var(--line)}

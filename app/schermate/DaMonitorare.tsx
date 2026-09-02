@@ -2,7 +2,7 @@
 import type { OrdineApp } from '@/lib/classify';
 import type { Config } from '@/lib/config';
 import { STATI } from '@/lib/status';
-import { Tracking, Badge, Progresso, Finestra, TicketBadge, DT, trascorso, Vuoto, b2bInFondo, BADGE_GRAVITA } from '../ui';
+import { Tracking, Badge, Progresso, Finestra, TicketBadge, DT, trascorso, Vuoto, b2cInFondo, BADGE_GRAVITA } from '../ui';
 import { BarraFiltri, BarraRapidi, DefFiltro, Rapido, applica } from './Filtri';
 
 export default function DaMonitorare(
@@ -21,7 +21,7 @@ export default function DaMonitorare(
     { k: 'stato', label: 'Stato normalizzato', opzioni: () => Object.entries(STATI).map(([k, v]) => [k, v.label]),
       test: (o, v) => o.stato === v },
     { k: 'corriere', label: 'Corriere', opzioni: opzioni.corriere, test: (o, v) => o.corriere === v },
-    { k: 'gruppo', label: 'Società / B2B', opzioni: opzioni.gruppo, test: (o, v) => (v === 'B2B' ? o.isB2B : o.socNome === v) },
+    { k: 'gruppo', label: 'Società / B2C', opzioni: opzioni.gruppo, test: (o, v) => (v === 'B2C' ? o.isB2C : o.socNome === v) },
     { k: 'paese', label: 'Paese', opzioni: opzioni.paese, test: (o, v) => o.destinazione.paese === v },
     { k: 'regione', label: 'Regione', opzioni: opzioni.regione, test: (o, v) => o.destinazione.regione === v },
     { k: 'prov', label: 'Provincia', opzioni: opzioni.provincia, test: (o, v) => o.destinazione.provincia === v },
@@ -57,7 +57,7 @@ export default function DaMonitorare(
   const pre = applica(base, defs, filtri);
   const r = rapidi.find(x => x.k === rapido);
   const lista = (r?.test ? pre.filter(r.test) : pre)
-    .sort(b2bInFondo<OrdineApp>((a, b) => (b.ritardoGG - a.ritardoGG) || a.nome.localeCompare(b.nome)));
+    .sort(b2cInFondo<OrdineApp>((a, b) => (b.ritardoGG - a.ritardoGG) || a.nome.localeCompare(b.nome)));
 
   return (
     <>
@@ -69,17 +69,17 @@ export default function DaMonitorare(
       <BarraFiltri defs={defs} valori={filtri} imposta={imposta} azzera={azzera} />
       {!lista.length ? <Vuoto testo="Nessuna spedizione con i filtri attivi." /> : (
         <div className="card"><div className="tw"><table>
-          <thead><tr><th>Ordine</th><th>Destinatario</th><th>Società / B2B</th><th>Corriere</th>
+          <thead><tr><th>Ordine</th><th>Destinatario</th><th>Società / B2C</th><th>Corriere</th>
             <th>Tracking</th><th>Partenza</th><th>Ultimo agg.</th><th>Avanzamento</th>
             <th>Consegna stimata</th><th>Alert</th><th>Ticket</th></tr></thead>
           <tbody>
             {lista.map(o => (
-              <tr key={o.id} className={o.isB2B ? 'b2b-row' : ''} onClick={() => apri(o.id)}>
+              <tr key={o.id} className={o.isB2C ? 'b2c-row' : ''} onClick={() => apri(o.id)}>
                 <td><div className="stack"><span className="ordref">{o.nome}</span>
                   {o.rimborsatoTotale && <Badge tipo="crit">rimborsato</Badge>}</div></td>
                 <td><div className="stack">{o.cliente}
                   <span className="s2">{o.destinazione.citta} ({o.destinazione.provincia}) · {o.destinazione.paese}</span></div></td>
-                <td>{o.isB2B ? <Badge tipo="b2b">B2B</Badge> :
+                <td>{o.isB2C ? <Badge tipo="b2c">B2C</Badge> :
                   <div className="stack">{o.socNome}<span className="s2">{o.categoria}</span></div>}</td>
                 <td>{o.corriere ?? <span className="muted">—</span>}</td>
                 <td><Tracking codice={o.tracking} url={o.trackingUrl} /></td>

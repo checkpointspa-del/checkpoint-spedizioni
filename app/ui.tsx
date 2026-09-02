@@ -75,7 +75,7 @@ export function GruppoBadge({ o }: { o: OrdineApp }) {
   /* Stessa logica del ritiro: un ordine rimborsato e' fuori perimetro, se compare
      e' perche' la merce viaggia lo stesso. Va letto prima di tutto il resto. */
   const rimborso = o.rimborsatoTotale ? <> <Badge tipo="crit">rimborsato, merce in viaggio</Badge></> : null;
-  if (o.isB2B) return <><Badge tipo="b2b">B2B</Badge>{rimborso}{ritiro}</>;
+  if (o.isB2C) return <><Badge tipo="b2c">B2C</Badge>{rimborso}{ritiro}</>;
   return (
     <>
       <Badge tipo="soc">{o.socNome}</Badge>
@@ -122,9 +122,9 @@ export function TicketBadge({ stato }: { stato: StatoTicket }) {
 export const etichettaCausaDati = (c: keyof typeof CAUSE_DATI) => CAUSE_DATI[c].label;
 export const etichettaCausaSped = (c: keyof typeof CAUSE_SPEDIZIONE) => CAUSE_SPEDIZIONE[c].label;
 
-/** Il gruppo B2B sta sempre in fondo, con qualsiasi ordinamento. */
-export function b2bInFondo<T extends { isB2B: boolean }>(cmp: (a: T, b: T) => number) {
-  return (a: T, b: T) => (a.isB2B !== b.isB2B ? (a.isB2B ? 1 : -1) : cmp(a, b));
+/** Il gruppo B2C (privati senza tag società) sta sempre in fondo, con qualsiasi ordinamento. */
+export function b2cInFondo<T extends { isB2C: boolean }>(cmp: (a: T, b: T) => number) {
+  return (a: T, b: T) => (a.isB2C !== b.isB2C ? (a.isB2C ? 1 : -1) : cmp(a, b));
 }
 
 export function Vuoto({ testo }: { testo: string }) {

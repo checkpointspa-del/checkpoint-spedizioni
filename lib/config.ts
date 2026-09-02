@@ -36,8 +36,19 @@ export interface Config {
   };
   /** Calendario festività, data civile italiana. */
   festivi: string[];
-  /** Etichetta del gruppo virtuale che raccoglie gli ordini senza tag società. */
-  etichettaB2B: string;
+  /**
+   * Etichetta del gruppo virtuale che raccoglie gli ordini SENZA tag societa'.
+   *
+   * Si chiamava `etichettaB2B` ed era sbagliato: quel gruppo sono i **privati**, cioe'
+   * B2C. Il B2B vero sono le societa' sportive, che i tag ce l'hanno. Rinominato il
+   * 02/09 in tutto il codice (`isB2C`, `b2cInFondo`, classi CSS comprese) perche' un
+   * nome che dice il contrario di quello che contiene e' una trappola per chiunque
+   * legga dopo.
+   *
+   * Nessuna migrazione del metafield: la chiave vecchia semplicemente non viene piu'
+   * letta, quindi una configurazione salvata in passato ricade sul default corretto.
+   */
+  etichettaB2C: string;
   /**
    * Day 1 del cruscotto: gli ordini creati prima non entrano nel perimetro operativo.
    * Data fissa e non finestra mobile, così il perimetro non slitta da solo e nessun
@@ -81,7 +92,7 @@ export const CONFIG_DEFAULT: Config = {
     '2027-01-01','2027-01-06','2027-03-29','2027-04-25','2027-05-01','2027-06-02',
     '2027-08-15','2027-11-01','2027-12-08','2027-12-25','2027-12-26'
   ],
-  etichettaB2B: 'B2B',
+  etichettaB2C: 'B2C',
   dataInizio: '2026-07-24'
 };
 

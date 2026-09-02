@@ -100,7 +100,7 @@ export interface OrdineApp {
   rimborsatoTotale: boolean; rimborsoParziale: boolean;
 
   // classificazione commerciale
-  isB2B: boolean; identificabile: boolean; socCompleta: boolean;
+  isB2C: boolean; identificabile: boolean; socCompleta: boolean;
   socCodice: string; socNome: string; categoria: string; atleta: string; gruppo: string;
 
   // tag
@@ -135,6 +135,12 @@ export interface OrdineApp {
 
   // alert
   alertDati: CausaDati[]; gravitaDati: Gravita | null;
+  /**
+   * Merce ancora nel NOSTRO magazzino: LDV creata, corriere che non e' passato.
+   * Non e' un problema del vettore e non genera ticket: si lavora in "Da spedire".
+   */
+  alertMagazzino: { causa: CausaSpedizione; gravita: Gravita }[]; gravitaMagazzino: Gravita | null;
+  /** Anomalie del VETTORE, solo su merce che ha gia' preso in carico. */
   alertSpedizione: { causa: CausaSpedizione; gravita: Gravita }[]; gravitaSpedizione: Gravita | null;
   anomalia: boolean;
 
@@ -211,7 +217,7 @@ export function risolviNomiSocieta(ordini: OrdineApp[]): OrdineApp[] {
 
   const conteggi = new Map<string, Map<string, number>>();
   for (const x of ordini) {
-    if (x.isB2B || !x.socCodice || !haNome(x)) continue;
+    if (x.isB2C || !x.socCodice || !haNome(x)) continue;
     const m = conteggi.get(x.socCodice) ?? new Map<string, number>();
     m.set(x.socNome, (m.get(x.socNome) ?? 0) + 1);
     conteggi.set(x.socCodice, m);
@@ -226,7 +232,7 @@ export function risolviNomiSocieta(ordini: OrdineApp[]): OrdineApp[] {
   if (!scelto.size) return ordini;
 
   return ordini.map(x => {
-    if (x.isB2B || !x.socCodice || haNome(x)) return x;
+    if (x.isB2C || !x.socCodice || haNome(x)) return x;
     const nome = scelto.get(x.socCodice);
     if (!nome || nome === x.socNome) return x;
     return { ...x, socNome: nome, gruppo: nome, ricerca: `${x.ricerca} ${nome.toLowerCase()}` };
@@ -247,10 +253,10 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
 
   /* --- ramo commerciale --- */
   const presenti = CHIAVI_SOC.filter(k => t.soc[k as ChiaveSoc]);
-  const isB2B = presenti.length === 0;
+  const isB2C = presenti.length === 0;
   const identificabile = Boolean(t.soc.codice_soc || t.soc.soc_nome);
   const socCompleta = presenti.length === CHIAVI_SOC.length;
-  const socNome = isB2B ? cfg.etichettaB2B : (t.soc.soc_nome || t.soc.codice_soc || 'Società non identificata');
+  const socNome = isB2C ? cfg.etichettaB2C : (t.soc.soc_nome || t.soc.codice_soc || 'Società non identificata');
 
   /* --- riassunto delle spedizioni --- */
   const snapSalvato = leggiSnapshot(o.snapshot?.value);
@@ -377,13 +383,22 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
   const gravitaDati = alertDati.length
     ? alertDati.map(c => CAUSE_DATI[c].gravita).sort((a, b) => ORDINE_GRAVITA[b] - ORDINE_GRAVITA[a])[0] : null;
 
-  /* --- alert spedizione --- */
+  /* --- alert: DUE famiglie, mai mescolate (vedi CAUSE_MAGAZZINO in alerts.ts) ---
+     MAGAZZINO  -> la merce e' ancora da noi. Si lavora in "Da spedire".
+     SPEDIZIONE -> il corriere ce l'ha. Si lavora in "Alert spedizione", e solo da qui
+                   puo' nascere un ticket al vettore.
+     Il discrimine e' la presa in carico, cioe' la fase. */
+  const inMagazzino = new Map<CausaSpedizione, Gravita>();
   const raccolti = new Map<CausaSpedizione, Gravita>();
-  const add = (c: CausaSpedizione, g: Gravita) => {
-    const cur = raccolti.get(c);
-    if (!cur || ORDINE_GRAVITA[g] > ORDINE_GRAVITA[cur]) raccolti.set(c, g);
+  const accumula = (m: Map<CausaSpedizione, Gravita>) => (c: CausaSpedizione, g: Gravita) => {
+    const cur = m.get(c);
+    if (!cur || ORDINE_GRAVITA[g] > ORDINE_GRAVITA[cur]) m.set(c, g);
   };
-  if (attivo && conTracking.length) {
+  const addMag = accumula(inMagazzino);
+  const add = accumula(raccolti);
+
+  /* Merce ancora da noi: LDV creata, corriere che non l'ha mai presa in carico. */
+  if (fase === 'da_spedire' && conTracking.length) {
     const oreTrack = oreDa(trackAt, ora) ?? 0;
     const soloUno = (principale?.numeroEventi ?? 0) <= 1;
     const S = cfg.soglie;
@@ -391,19 +406,24 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
        ZERO eventi = il corriere non ha mai visto il collo: e' fermo da noi.
        Eventi presenti ma nessuna prova di uscita = il corriere ha la LDV e non passa. */
     const senzaAlcunEvento = (principale?.numeroEventi ?? 0) === 0;
-    if (!presaAt && senzaAlcunEvento && oreTrack > S.oreSenzaEventoDopoTracking) {
+    if (senzaAlcunEvento && oreTrack > S.oreSenzaEventoDopoTracking) {
       const gg = oreTrack / 24;
-      add('collo_non_partito',
+      addMag('collo_non_partito',
           gg > S.giorniColloNonPartitoCritico ? 'critico'
         : gg > S.giorniColloNonPartitoUrgente ? 'urgente'
         : 'attenzione');
     }
-    if (!presaAt && !senzaAlcunEvento) {
+    if (!senzaAlcunEvento) {
       if (soloUno && oreTrack > S.oreSenzaEventoDopoTracking)
-        add('nessun_evento', oreTrack > S.oreMancataPresaInCarico ? 'urgente' : 'attenzione');
+        addMag('nessun_evento', oreTrack > S.oreMancataPresaInCarico ? 'urgente' : 'attenzione');
       if (oreTrack > S.oreMancataPresaInCarico)
-        add('mancata_presa', oreTrack > S.oreMancataPresaInCarico * 2 ? 'urgente' : 'attenzione');
+        addMag('mancata_presa', oreTrack > S.oreMancataPresaInCarico * 2 ? 'urgente' : 'attenzione');
     }
+  }
+
+  /* Anomalie del VETTORE: solo su merce che il vettore ha davvero preso in carico. */
+  if (fase === 'da_monitorare' && conTracking.length) {
+    const S = cfg.soglie;
     if (presaAt && oreUltimoEvento !== null && oreUltimoEvento > S.oreTrackingFermo)
       add('tracking_fermo', oreUltimoEvento > S.oreTrackingFermoCritico ? 'urgente' : 'attenzione');
     if (ritardoGG >= S.giorniOltreFinestra) add('oltre_finestra', ritardoGG >= 3 ? 'critico' : 'urgente');
@@ -419,25 +439,25 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
     if (s === 'eccezione')             add(t.tagProblema ? 'danneggiata' : 'eccezione_corriere', t.tagProblema ? 'critico' : 'urgente');
     if (stato === 'sconosciuto')       add('non_riconosciuto', 'urgente');
   }
-  const alertSpedizione = [...raccolti.entries()]
+  const perGravita = (m: Map<CausaSpedizione, Gravita>) => [...m.entries()]
     .map(([causa, gravita]) => ({ causa, gravita }))
     .sort((a, b) => ORDINE_GRAVITA[b.gravita] - ORDINE_GRAVITA[a.gravita]);
+  const alertMagazzino = perGravita(inMagazzino);
+  const gravitaMagazzino = alertMagazzino.length ? alertMagazzino[0].gravita : null;
+  const alertSpedizione = perGravita(raccolti);
   const gravitaSpedizione = alertSpedizione.length ? alertSpedizione[0].gravita : null;
 
   /* --- ticket --- */
   let ticket: Ticket | null = null;
   try { ticket = o.ticket?.value ? JSON.parse(o.ticket.value) as Ticket : null; } catch { ticket = null; }
-  /* SENZA SPEDIZIONE TRACCIATA NON SI APRE NULLA.
-     Un ticket al vettore ha senso solo su una spedizione che il vettore ha davvero:
-     senza codice non c'e' niente da chiedergli e non c'e' niente da cercare.
-     La guardia e' esplicita anche se oggi gli alert di spedizione nascono gia' solo
-     con `conTracking`: la condizione del ticket non deve dipendere da quella. */
+  /* SENZA UNA SPEDIZIONE CHE IL VETTORE ABBIA DAVVERO NON SI APRE NULLA.
+     Due condizioni, entrambe necessarie e per ragioni diverse:
+      - `conTracking` -> senza codice non c'e' niente da chiedere al corriere;
+      - `alertSpedizione` -> ora contiene SOLO anomalie del vettore su merce presa in
+        carico. Un collo fermo nel nostro magazzino non arriva piu' fin qui, quindi
+        nessun ticket viene proposto per merce che il corriere non ha mai ricevuto. */
   if (!ticket && conTracking.length && alertSpedizione.length) {
-    /* Un collo non partito e' un problema NOSTRO, non del corriere: aprirgli un ticket
-       significa fargli cercare una merce che non ha mai ricevuto. Finche' l'unica causa
-       e' quella, il ticket resta "da verificare" e l'azione e' il controllo in magazzino. */
-    const soloInterno = alertSpedizione.every(a => a.causa === 'collo_non_partito');
-    const stato: StatoTicket = !soloInterno && gravitaSpedizione
+    const stato: StatoTicket = gravitaSpedizione
       && ORDINE_GRAVITA[gravitaSpedizione] >= ORDINE_GRAVITA.urgente
       ? 'ticket_da_aprire' : 'da_verificare';
     ticket = { stato, apertoIl: null, operatore: null, corriere: spedizioni[0]?.corriere ?? null,
@@ -466,11 +486,11 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
     destinazione: dest,
     ritiroInNegozio: eRitiroInNegozio(o),
     rimborsatoTotale, rimborsoParziale,
-    isB2B, identificabile, socCompleta,
+    isB2C, identificabile, socCompleta,
     socCodice: t.soc.codice_soc ?? '', socNome,
-    categoria: isB2B ? '—' : (t.soc.soc_categoria || 'Categoria non indicata'),
-    atleta: isB2B ? '—' : (t.soc.soc_atleta || 'Atleta non indicato'),
-    gruppo: isB2B ? cfg.etichettaB2B : socNome,
+    categoria: isB2C ? '—' : (t.soc.soc_categoria || 'Categoria non indicata'),
+    atleta: isB2C ? '—' : (t.soc.soc_atleta || 'Atleta non indicato'),
+    gruppo: isB2C ? cfg.etichettaB2C : socNome,
     tags: o.tags, prevista: t.prevista, previsteGrezze: t.previsteGrezze,
     tagAlert: t.tagAlert, tagProblema: t.tagProblema, tagRientro: t.tagRientro,
     spedizioni, multiSped: guida.length > 1,
@@ -490,8 +510,9 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
     consegnaUltima,
     oreAttesaRitiro,
     zona, etaMin, etaMax, ritardoGG, inScadenza,
-    alertDati, gravitaDati, alertSpedizione, gravitaSpedizione,
-    anomalia: Boolean(eventiAnomali || alertSpedizione.length),
+    alertDati, gravitaDati,
+    alertMagazzino, gravitaMagazzino, alertSpedizione, gravitaSpedizione,
+    anomalia: Boolean(eventiAnomali || alertSpedizione.length || alertMagazzino.length),
     ticket, ticketDaAprire: ticketVerso && ticket?.stato === 'ticket_da_aprire', ticketAperto,
     ricerca: [o.name, cliente, ...spedizioni.map(s => s.tracking ?? ''), socNome,
               t.soc.soc_categoria ?? '', t.soc.soc_atleta ?? '',

@@ -45,7 +45,7 @@ export function AlertDati(
               <div className="meta">
                 <div><span>Data ordine</span>{D(o.ricezione)}</div>
                 <div><span>Cliente</span>{o.cliente}</div>
-                <div><span>Categoria / atleta</span>{o.isB2B ? '—' : `${o.categoria} · ${o.atleta}`}</div>
+                <div><span>Categoria / atleta</span>{o.isB2C ? '—' : `${o.categoria} · ${o.atleta}`}</div>
                 <div><span>Data prevista</span>{o.prevista ? D(o.prevista) : <b style={{ color: 'var(--crit)' }}>assente</b>}</div>
                 <div><span>Tracking</span><Tracking codice={o.tracking} url={o.trackingUrl} vuoto="nessuno" /></div>
                 <div><span>Fase</span>{o.fase === 'da_spedire' ? 'Da spedire' : 'Da monitorare'}</div>
@@ -80,8 +80,10 @@ export function AlertSpedizione(
   return (
     <>
       <div className="active-note">
-        Alert <b>operativi</b> sul tracking, distinti dagli alert sui dati. Le soglie sono configurabili e
-        non dipendono dalla data prevista di spedizione.
+        <b>Che cosa non va</b>, sulle sole spedizioni che il corriere ha <b>già preso in carico</b>.
+        La merce ancora ferma nel nostro magazzino non compare qui: si lavora in <b>Da spedire</b>,
+        filtro <i>Fermi nel nostro magazzino</i>. Quando serve una pratica col vettore, l’ordine passa in
+        <b>Ticket corrieri</b>. Le soglie sono configurabili e non dipendono dalla data prevista.
       </div>
       <BarraRapidi rapidi={rapidi} attivo={rapido} imposta={setRapido} base={base} />
       <div className="alist">

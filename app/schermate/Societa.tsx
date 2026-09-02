@@ -10,13 +10,13 @@ import { BarraFiltri, DefFiltro, applica } from './Filtri';
  * Mostra solo ordini ANCORA ATTIVI: un ordine consegnato non viene nemmeno
  * caricato da Shopify, quindi qui non può comparire.
  *
- * Il gruppo virtuale B2B resta sempre in fondo e con enfasi ridotta, qualunque
+ * Il gruppo virtuale B2C resta sempre in fondo e con enfasi ridotta, qualunque
  * sia l'ordinamento: raccoglie gli ordini senza alcun tag società e non richiede
  * di aggiungerne uno.
  */
 interface Nodo { nome: string; ordini: OrdineApp[] }
 interface Categoria extends Nodo { atleti: Map<string, Nodo> }
-interface Gruppo extends Nodo { b2b: boolean; categorie: Map<string, Categoria> }
+interface Gruppo extends Nodo { b2c: boolean; categorie: Map<string, Categoria> }
 
 export default function Societa(
   { ordini, config, filtri, imposta, azzera, aperti, alterna, apri, opzioni }:
@@ -26,12 +26,12 @@ export default function Societa(
     apri: (id: string) => void; opzioni: Record<string, () => [string, string][]> }
 ) {
   const defs: DefFiltro[] = [
-    { k: 'b2b', label: 'Gruppo B2B', opzioni: () => [['includi', 'Includi B2B'], ['escludi', 'Escludi B2B']],
-      test: (o, v) => (v === 'escludi' ? !o.isB2B : true) },
+    { k: 'b2c', label: 'Gruppo B2C', opzioni: () => [['includi', 'Includi B2C'], ['escludi', 'Escludi B2C']],
+      test: (o, v) => (v === 'escludi' ? !o.isB2C : true) },
     { k: 'fase', label: 'Fase', opzioni: () => [['da_spedire', 'Da spedire'], ['da_monitorare', 'Da monitorare']],
       test: (o, v) => o.fase === v },
     { k: 'categoria', label: 'Categoria',
-      opzioni: () => [...new Set(ordini.filter(o => !o.isB2B).map(o => o.categoria))].sort().map(v => [v, v] as [string, string]),
+      opzioni: () => [...new Set(ordini.filter(o => !o.isB2C).map(o => o.categoria))].sort().map(v => [v, v] as [string, string]),
       test: (o, v) => o.categoria === v },
     { k: 'corriere', label: 'Corriere', opzioni: opzioni.corriere, test: (o, v) => o.corriere === v },
     { k: 'alert', label: 'Solo con alert',
@@ -46,29 +46,29 @@ export default function Societa(
   const albero = new Map<string, Gruppo>();
   for (const o of lista) {
     let g = albero.get(o.gruppo);
-    if (!g) { g = { nome: o.gruppo, b2b: o.isB2B, ordini: [], categorie: new Map() }; albero.set(o.gruppo, g); }
+    if (!g) { g = { nome: o.gruppo, b2c: o.isB2C, ordini: [], categorie: new Map() }; albero.set(o.gruppo, g); }
     g.ordini.push(o);
 
-    const kCat = o.isB2B ? 'Ordini B2B' : o.categoria;
+    const kCat = o.isB2C ? 'Ordini B2C' : o.categoria;
     let c = g.categorie.get(kCat);
     if (!c) { c = { nome: kCat, ordini: [], atleti: new Map() }; g.categorie.set(kCat, c); }
     c.ordini.push(o);
 
-    const kAtl = o.isB2B ? o.cliente : o.atleta;
+    const kAtl = o.isB2C ? o.cliente : o.atleta;
     let a = c.atleti.get(kAtl);
     if (!a) { a = { nome: kAtl, ordini: [] }; c.atleti.set(kAtl, a); }
     a.ordini.push(o);
   }
 
-  // B2B in fondo, prima di qualunque altro criterio.
+  // B2C in fondo, prima di qualunque altro criterio.
   const gruppi = [...albero.values()].sort((x, y) =>
-    x.b2b !== y.b2b ? (x.b2b ? 1 : -1) : x.nome.localeCompare(y.nome));
+    x.b2c !== y.b2c ? (x.b2c ? 1 : -1) : x.nome.localeCompare(y.nome));
 
   return (
     <>
       <div className="active-note">
         Gerarchia <b>società → categoria → atleta → ordini</b> sugli ordini ancora attivi.
-        Il gruppo <b>{config.etichettaB2B}</b> raccoglie gli ordini senza tag società: non richiede
+        Il gruppo <b>{config.etichettaB2C}</b> raccoglie gli ordini senza tag società: non richiede
         alcun tag, non è un errore, e resta sempre in fondo.
       </div>
       <BarraFiltri defs={defs} valori={filtri} imposta={imposta} azzera={azzera} />
@@ -78,10 +78,10 @@ export default function Societa(
           {gruppi.map(g => {
             const k1 = `g|${g.nome}`;
             return (
-              <div className={`node ${g.b2b ? 'b2b' : ''}`} key={g.nome}>
+              <div className={`node ${g.b2c ? 'b2c' : ''}`} key={g.nome}>
                 <button className="n1" onClick={() => alterna(k1)}>
                   <span className={`car ${aperti[k1] ? 'open' : ''}`}>▶</span>
-                  {g.b2b ? <Badge tipo="b2b">{config.etichettaB2B}</Badge> : g.nome}
+                  {g.b2c ? <Badge tipo="b2c">{config.etichettaB2C}</Badge> : g.nome}
                   <Riepilogo ordini={g.ordini} />
                 </button>
 

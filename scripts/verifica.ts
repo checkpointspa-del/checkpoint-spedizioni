@@ -12,7 +12,7 @@ import * as store from '../lib/store.ts';
 import { queryPerimetro, queryRitiri, queryRimborsati, haSpedizioneTracciata } from '../lib/store.ts';
 import { provaUscitaMagazzino, statoDaEvento } from '../lib/status.ts';
 import { leggiTag } from '../lib/tags.ts';
-import { CAUSE_DATI } from '../lib/alerts.ts';
+import { CAUSE_DATI, CAUSE_MAGAZZINO } from '../lib/alerts.ts';
 
 const F = CONFIG_DEFAULT.festivi;
 
@@ -143,15 +143,15 @@ test('risolvere il nome NON cancella l\u2019alert sul tag mancante', () => {
     'la vista si aggiusta, la segnalazione resta');
 });
 
-test('il B2B non viene mai assorbito da una societa', () => {
+test('il B2C non viene mai assorbito da una societa', () => {
   const soc = classifica(ordine({
     tags: ['codice_soc=VLB', 'soc_nome=ASD Volley Brescia', 'soc_categoria=U16',
            'soc_atleta=Ada', 'spedizione_prevista=2026-09-02']
   }), CONFIG_DEFAULT, ORA);
-  const b2b = classifica(ordine({ tags: ['spedizione_prevista=2026-09-02'] }), CONFIG_DEFAULT, ORA);
-  const [, r] = risolviNomiSocieta([soc, b2b]);
-  assert.equal(r.isB2B, true);
-  assert.equal(r.gruppo, 'B2B');
+  const b2c = classifica(ordine({ tags: ['spedizione_prevista=2026-09-02'] }), CONFIG_DEFAULT, ORA);
+  const [, r] = risolviNomiSocieta([soc, b2c]);
+  assert.equal(r.isB2C, true);
+  assert.equal(r.gruppo, 'B2C');
 });
 
 test('codici diversi restano gruppi diversi', () => {
@@ -192,7 +192,11 @@ test('il rientro al mittente arriva fino allo stato e all\u2019alert', () => {
   assert.ok(o.alertSpedizione.some(a => a.causa === 'rientro_mittente'));
 });
 
-/* ---------- collo non partito ---------- */
+/* ---------- merce ferma nel NOSTRO magazzino (famiglia `alertMagazzino`) ----------
+   Dal 02/09 queste cause NON stanno piu' in `alertSpedizione`: il corriere non ha la
+   merce, quindi non e' un'anomalia del vettore e non genera ticket. Si lavora in
+   "Da spedire". Regola Checkpoint: *"se l'ordine deve ancora partire dal nostro
+   magazzino non ha senso che sia in nessuno di quei due"*. */
 const senzaEventi = (id: string, tracking: string, createdAt: string) =>
   ({ id, createdAt, status: 'SUCCESS', displayStatus: 'FULFILLED',
      trackingInfo: [{ number: tracking, company: 'Poste Italiane', url: null }],
@@ -205,10 +209,12 @@ test('LDV senza alcun evento da 25 giorni: collo non partito, gravita critica', 
     tags: ['codice_soc=SPORTINGC2627'],
     fulfillments: [senzaEventi('f1', '3UW1JS2036837', '2026-08-06T14:30:50Z') as any]
   }), CONFIG_DEFAULT, ORA);
-  const c = o.alertSpedizione.find(a => a.causa === 'collo_non_partito');
+  const c = o.alertMagazzino.find(a => a.causa === 'collo_non_partito');
   assert.ok(c, 'il caso deve avere una causa propria, non essere confuso col corriere');
   assert.equal(c!.gravita, 'critico', 'oltre 7 giorni fermo e\u2019 la cosa piu\u2019 grave del cruscotto');
-  assert.equal(o.gravitaSpedizione, 'critico');
+  assert.equal(o.gravitaMagazzino, 'critico');
+  assert.deepEqual(o.alertSpedizione, [],
+    'il corriere non ha il collo: fuori da «Alert spedizione»');
 });
 
 test('collo non partito ed eventi assenti non generano piu\u2019 i due alert sovrapposti', () => {
@@ -216,7 +222,7 @@ test('collo non partito ed eventi assenti non generano piu\u2019 i due alert sov
     displayFulfillmentStatus: 'FULFILLED',
     fulfillments: [senzaEventi('f1', 'AAA', '2026-08-06T14:30:50Z') as any]
   }), CONFIG_DEFAULT, ORA);
-  const cause = o.alertSpedizione.map(a => a.causa);
+  const cause = o.alertMagazzino.map(a => a.causa);
   assert.ok(cause.includes('collo_non_partito'));
   assert.ok(!cause.includes('mancata_presa'), 'il corriere non ha mai avuto il collo: non e\u2019 mancata presa');
   assert.ok(!cause.includes('nessun_evento'), 'sarebbe lo stesso fatto detto due volte');
@@ -228,7 +234,7 @@ test('la gravita del collo non partito cresce con i giorni', () => {
       displayFulfillmentStatus: 'FULFILLED',
       fulfillments: [senzaEventi('f1', 'AAA', ldv) as any]
     }), CONFIG_DEFAULT, ORA);
-    return o.alertSpedizione.find(a => a.causa === 'collo_non_partito')?.gravita ?? null;
+    return o.alertMagazzino.find(a => a.causa === 'collo_non_partito')?.gravita ?? null;
   };
   assert.equal(caso('2026-08-31T08:00:00Z'), null,  'poche ore: nessun allarme, e\u2019 normale');
   assert.equal(caso('2026-08-29T08:00:00Z'), 'attenzione');
@@ -244,20 +250,22 @@ test('con eventi presenti ma nessuna prova di uscita resta la mancata presa in c
       evento('CONFIRMED', '2026-08-27T14:02:00+02:00', 'Spedizione confermata')
     ], '2026-08-27T13:00:00+02:00')]
   }), CONFIG_DEFAULT, ORA);
-  const cause = o.alertSpedizione.map(a => a.causa);
+  const cause = o.alertMagazzino.map(a => a.causa);
   assert.ok(cause.includes('mancata_presa'), 'qui il sollecito al corriere ha senso');
   assert.ok(!cause.includes('collo_non_partito'), 'il collo risulta acquisito, non fermo da noi');
+  assert.deepEqual(o.alertSpedizione, [], 'la merce non e\u2019 ancora uscita: non e\u2019 un alert di spedizione');
 });
 
-test('un collo non partito non propone un ticket al corriere', () => {
+test('un collo non partito non propone alcun ticket, nemmeno un segnaposto', () => {
   const o = classifica(ordine({
     displayFulfillmentStatus: 'FULFILLED',
     fulfillments: [senzaEventi('f1', 'AAA', '2026-08-06T14:30:50Z') as any]
   }), CONFIG_DEFAULT, ORA);
-  assert.equal(o.gravitaSpedizione, 'critico');
-  assert.equal(o.ticketDaAprire, false,
-    'il corriere non ha mai avuto il collo: fargli cercare la merce e\u2019 tempo perso');
-  assert.equal(o.ticket?.stato, 'da_verificare');
+  assert.equal(o.gravitaMagazzino, 'critico');
+  assert.equal(o.ticket, null,
+    'il corriere non ha mai avuto il collo: nel registro ticket non ci deve stare per niente');
+  assert.equal(o.ticketDaAprire, false);
+  assert.equal(o.ticketAperto, false);
 });
 
 test('un problema vero del corriere continua a proporre il ticket', () => {
@@ -317,7 +325,7 @@ test('la merce ferma da noi resta segnalata anche con la spedizione giusta in ev
     ]
   }), CONFIG_DEFAULT, ORA);
   // LDV acquisita dal corriere ma mai ritirata: e' mancata presa, non collo non partito
-  assert.ok(o.alertSpedizione.some(a => a.causa === 'mancata_presa'),
+  assert.ok(o.alertMagazzino.some(a => a.causa === 'mancata_presa'),
     'il corriere ha la LDV e non e\u2019 passato: va sollecitato');
   assert.equal(o.faseRitiro, 'in_attesa_ritiro');
 });
@@ -408,18 +416,18 @@ const fulfillment = (id: string, tracking: string, eventi: any[], createdAt = '2
   ({ id, createdAt, status: 'SUCCESS', displayStatus: null,
      trackingInfo: [{ number: tracking, company: 'BRT', url: null }], events: { nodes: eventi } });
 
-test('senza tag società l’ordine è B2B e non genera alert per questo', () => {
+test('senza tag società l’ordine è B2C e non genera alert per questo', () => {
   const o = classifica(ordine({ tags: ['spedizione_prevista=2026-09-02'] }), CONFIG_DEFAULT, ORA);
-  assert.equal(o.isB2B, true);
-  assert.equal(o.gruppo, 'B2B');
+  assert.equal(o.isB2C, true);
+  assert.equal(o.gruppo, 'B2C');
   assert.deepEqual(o.alertDati, []);
 });
 
-test('tag società parziali NON diventano B2B ma segnalano dati incompleti', () => {
+test('tag società parziali NON diventano B2C ma segnalano dati incompleti', () => {
   const o = classifica(ordine({
     tags: ['soc_nome=ASD Volley Brescia', 'soc_categoria=Under 16', 'spedizione_prevista=2026-09-02']
   }), CONFIG_DEFAULT, ORA);
-  assert.equal(o.isB2B, false);
+  assert.equal(o.isB2C, false);
   assert.equal(o.socNome, 'ASD Volley Brescia');
   assert.equal(o.atleta, 'Atleta non indicato');
   assert.ok(o.alertDati.includes('soc_incompleta'));
@@ -768,4 +776,48 @@ test('con due spedizioni serve che TUTTE risultino consegnate', () => {
   }), CONFIG_DEFAULT, ORA);
   assert.equal(o.fase, 'da_monitorare');
   assert.equal(o.tracking, 'BBB', 'guida la spedizione ancora in viaggio');
+});
+
+/* ---------- il confine fra le due schermate (02/09) ---------- */
+test('CAUSE_MAGAZZINO e alert di spedizione non si sovrappongono mai', () => {
+  /* La regola vale per costruzione, non per caso: nessuna causa di magazzino puo’
+     comparire fra gli alert del vettore, in nessuno stato dell’ordine. */
+  const fermo = classifica(ordine({
+    displayFulfillmentStatus: 'FULFILLED',
+    fulfillments: [senzaEventi('f1', 'FERMO', '2026-08-06T14:30:50Z') as any]
+  }), CONFIG_DEFAULT, ORA);
+  assert.equal(fermo.fase, 'da_spedire');
+  assert.ok(fermo.alertMagazzino.length);
+  assert.ok(fermo.alertSpedizione.every(a => !CAUSE_MAGAZZINO.includes(a.causa)));
+
+  const inViaggio = classifica(ordine({
+    displayFulfillmentStatus: 'FULFILLED',
+    fulfillments: [fulfillment('f1', 'VIAGGIO', [
+      evento('CARRIER_PICKED_UP', '2026-08-24T17:00:00+02:00', 'Ritirata'),
+      evento('DELAYED', '2026-08-25T09:00:00+02:00', 'Merce in giacenza presso la filiale')
+    ])]
+  }), CONFIG_DEFAULT, ORA);
+  assert.equal(inViaggio.fase, 'da_monitorare');
+  assert.deepEqual(inViaggio.alertMagazzino, [],
+    'preso in carico dal corriere: non e’ piu’ merce ferma da noi');
+  assert.ok(inViaggio.alertSpedizione.some(a => a.causa === 'giacenza'));
+  assert.equal(inViaggio.ticketDaAprire, true);
+});
+
+test('un ordine che deve ancora partire non genera MAI un ticket', () => {
+  const casi = [
+    // LDV creata, zero eventi
+    [senzaEventi('f1', 'A1', '2026-08-06T14:30:50Z') as any],
+    // LDV acquisita dal corriere ma mai ritirata
+    [fulfillment('f1', 'A2', [evento('CONFIRMED', '2026-08-20T14:02:00+02:00', 'Confermata')],
+      '2026-08-20T13:00:00+02:00')]
+  ];
+  for (const fulfillments of casi) {
+    const o = classifica(ordine({ displayFulfillmentStatus: 'FULFILLED', fulfillments }),
+      CONFIG_DEFAULT, ORA);
+    assert.equal(o.fase, 'da_spedire');
+    assert.equal(o.ticket, null, 'merce ancora nostra: niente ticket al vettore');
+    assert.deepEqual(o.alertSpedizione, []);
+    assert.ok(o.alertMagazzino.length, 'ma la segnalazione non si perde: vive in Da spedire');
+  }
 });
