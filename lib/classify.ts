@@ -5,7 +5,8 @@
 import { Config, ZonaId } from './config';
 import { giorniLavorativiInteri, addGiorniLavorativi, oreDa } from './dates';
 import { leggiTag, CHIAVI_SOC, ChiaveSoc } from './tags';
-import { StatoNormalizzato, STATI, statoDaEvento, provaUscitaMagazzino } from './status';
+import { StatoNormalizzato, STATI, statoDaEvento, provaUscitaMagazzino,
+         provaUscitaDaDisplay, statoDaDisplay } from './status';
 import { SnapshotOrdine, SnapshotSpedizione, leggiSnapshot } from './snapshot';
 import { CausaDati, CAUSE_DATI, CausaSpedizione, Gravita, ORDINE_GRAVITA, Ticket, StatoTicket } from './alerts';
 
@@ -74,6 +75,14 @@ export interface SpedizioneApp extends SnapshotSpedizione {
    * Vedi la nota su `consegnaAt` piu' sotto in classifica().
    */
   consegnata: boolean;
+  /**
+   * Il collo e' USCITO dal magazzino: o il riassunto ha una data di presa in carico,
+   * o Shopify lo dichiara in movimento (`displayStatus`). Il fatto e' una cosa, la
+   * DATA e' un'altra: qui c'e' solo il fatto. Vedi la nota in status.ts.
+   */
+  uscita: boolean;
+  /** Stato dedotto da `displayStatus`, usato quando il riassunto non ha eventi. */
+  statoDisplay: StatoNormalizzato | null;
   parziale: boolean;
   /** fulfillment CANCELLED: non governa lo stato e non conta per la consegna */
   annullata: boolean;
@@ -279,7 +288,11 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
        DELIVERED vince lui, sempre. Il riassunto resta la fonte delle DATE, mai quella
        del fatto che la consegna sia avvenuta. */
     const consegnata = Boolean(s.consegnaAt) || f.displayStatus === 'DELIVERED';
-    return { ...s, trackingUrl: tr?.url ?? null, consegnata,
+    /* Stessa regola applicata all'uscita dal magazzino: il riassunto puo' non avere
+       ancora visto nulla, `displayStatus` invece e' sempre allineato. */
+    const uscita = Boolean(s.presaAt) || provaUscitaDaDisplay(f.displayStatus);
+    return { ...s, trackingUrl: tr?.url ?? null, consegnata, uscita,
+             statoDisplay: statoDaDisplay(f.displayStatus),
              parziale: o.fulfillments.length > 1,
              annullata: f.status === 'CANCELLED', eventi: f.events?.nodes ?? null };
   });
@@ -318,7 +331,10 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
   const presate = guida.map(s => s.presaAt).filter(Boolean) as string[];
 
   const trackAt = principale?.trackAt ?? null;
+  /** DATA della presa in carico: solo se il riassunto ce l'ha davvero. Non si deduce. */
   const presaAt = principale?.presaAt ?? null;
+  /** FATTO della presa in carico: basta che la piattaforma dica che il collo si muove. */
+  const uscitoDalMagazzino = Boolean(principale?.uscita);
   /** Informativo: tutte le spedizioni dell'ordine sono uscite dal magazzino. */
   const presaAtUltima = presate.length === guida.length && presate.length ? presate.slice().sort().pop()! : null;
   const consegnaUltima = tutteConsegnate && dateConsegna.length ? dateConsegna.slice().sort().pop()! : null;
@@ -337,7 +353,7 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
                      : 'in_corso';
   const fase: Fase = esito === 'annullato' ? 'chiuso'
                    : tutteConsegnate ? 'consegnato'
-                   : (presaAt ? 'da_monitorare' : 'da_spedire');
+                   : (uscitoDalMagazzino ? 'da_monitorare' : 'da_spedire');
   const attivo = fase === 'da_spedire' || fase === 'da_monitorare';
 
   /* --- stato normalizzato dell'ordine ---
@@ -349,20 +365,20 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
       !principale?.tracking ? 'senza_tracking'
     : principale.ultimoEventoStatus
       ? statoDaEvento(principale.ultimoEventoStatus, principale.ultimoEventoMessaggio)
-      : 'tracking_creato';
+      : (principale?.statoDisplay ?? 'tracking_creato');
   /* Se la spedizione guida risulta consegnata, lo stato e' quello e basta: senza questa
      riga un fulfillment DELIVERED privo di eventi nel riassunto sarebbe mostrato come
      "Tracking creato", cioe' l'esatto contrario della realta'. */
   if (principale?.consegnata) stato = 'consegnata';
   if (t.tagRientro && stato !== 'consegnata') stato = 'rientro_mittente';
   let statoReale: StatoNormalizzato | null = null;
-  if (!presaAt && principale?.tracking && stato === 'tracking_creato'
+  if (!uscitoDalMagazzino && principale?.tracking && stato === 'tracking_creato'
       && (oreDa(trackAt, ora) ?? 0) > 12) stato = 'in_attesa_ritiro';
   if (STATI[stato]?.genere === 'via' && oreUltimoEvento !== null
       && oreUltimoEvento > cfg.soglie.oreTrackingFermo) { statoReale = stato; stato = 'non_aggiornato'; }
 
   const faseRitiro: FaseRitiro = !principale?.tracking ? 'senza_tracking'
-    : presaAt ? 'preso_in_carico'
+    : uscitoDalMagazzino ? 'preso_in_carico'
     : ((oreDa(trackAt, ora) ?? 0) > 12 ? 'in_attesa_ritiro' : 'tracking_creato');
 
   /* --- finestra di consegna --- */
@@ -375,7 +391,7 @@ export function classifica(o: ShopifyOrdine, cfg: Config, ora = new Date()): Ord
     (new Date(etaMax!).getTime() - ora.getTime()) < cfg.soglie.oreScadenzaImminente * 3_600_000;
   /* Attesa del ritiro: quante ore la LDV esiste senza che il corriere sia passato.
      Non è una statistica, è il numero su cui si decide se sollecitare. */
-  const oreAttesaRitiro = (!presaAt && trackAt) ? oreDa(trackAt, ora) : null;
+  const oreAttesaRitiro = (!uscitoDalMagazzino && trackAt) ? oreDa(trackAt, ora) : null;
 
   /* --- alert dati --- */
   const alertDati: CausaDati[] = [];

@@ -99,3 +99,60 @@ export function statoDaEvento(status: string, message?: string | null): StatoNor
 
 export const provaUscitaMagazzino = (status: string): boolean =>
   PRESA_IN_CARICO.includes(status as FulfillmentEventStatus);
+
+/* ------------------------------------------------------------------------- *
+ * `displayStatus` DEL FULFILLMENT — la rete di sicurezza sotto al riassunto.
+ *
+ * PERCHE' SERVE. Nelle liste gli eventi non si leggono (costo N×F×E): lo stato
+ * arriva dal metafield `spedizione_stato`, che checkpoint-tracking scrive. Ma quel
+ * metafield puo' restare INDIETRO, e sui dati reali resta indietro spesso: il
+ * percorso `creazione` lo scrive quando il fulfillment nasce, con `numeroEventi: 0`,
+ * e se il webhook non lo aggiorna piu' il riassunto continua a dire "nessun evento"
+ * per sempre.
+ *
+ * Caso reale 26CKPT2972 (07/09): riassunto scritto l'1/09 con presaAt null e zero
+ * eventi; Shopify sullo stesso fulfillment dice `OUT_FOR_DELIVERY` e ha due eventi.
+ * Il cruscotto mostrava l'ordine come "da spedire, collo fermo in magazzino" mentre
+ * il pacco era sul furgone in consegna.
+ *
+ * `displayStatus` e' UN CAMPO: sta gia' nella query di lista e non costa nulla.
+ * E' meno preciso del riassunto — non porta date — ma e' sempre aggiornato.
+ * REGOLA: il riassunto e' la fonte delle DATE, `displayStatus` e' la fonte dello
+ * STATO. Quando i due si contraddicono, vince la piattaforma.
+ * ------------------------------------------------------------------------- */
+
+/** Valori di Fulfillment.displayStatus che PROVANO l'uscita dal magazzino. */
+export const USCITA_DA_DISPLAY: readonly string[] = [
+  'PICKED_UP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY',
+  'READY_FOR_PICKUP', 'ATTEMPTED_DELIVERY', 'DELIVERED'
+];
+
+/**
+ * NON sono prova di uscita, e la distinzione conta:
+ * `FULFILLED` e `MARKED_AS_FULFILLED` dicono solo che l'ordine e' stato evaso nel
+ * gestionale — la LDV esiste, il collo puo' essere ancora sul bancone. Verificato su
+ * 26CKPT2619 e 26CKPT2620, entrambi FULFILLED e fermi in magazzino.
+ */
+const STATO_DA_DISPLAY: Record<string, StatoNormalizzato> = {
+  LABEL_PURCHASED:    'tracking_creato',
+  LABEL_PRINTED:      'tracking_creato',
+  CONFIRMED:          'tracking_creato',
+  SUBMITTED:          'tracking_creato',
+  FULFILLED:          'tracking_creato',
+  MARKED_AS_FULFILLED:'tracking_creato',
+  PICKED_UP:          'preso_in_carico',
+  IN_TRANSIT:         'in_transito',
+  OUT_FOR_DELIVERY:   'in_consegna',
+  READY_FOR_PICKUP:   'pronta_per_ritiro',
+  ATTEMPTED_DELIVERY: 'destinatario_assente',
+  DELIVERED:          'consegnata',
+  NOT_DELIVERED:      'eccezione',
+  FAILURE:            'eccezione'
+};
+
+export const provaUscitaDaDisplay = (displayStatus?: string | null): boolean =>
+  Boolean(displayStatus && USCITA_DA_DISPLAY.includes(displayStatus));
+
+/** `null` quando Shopify non dice nulla di utile: non si inventa uno stato. */
+export const statoDaDisplay = (displayStatus?: string | null): StatoNormalizzato | null =>
+  (displayStatus && STATO_DA_DISPLAY[displayStatus]) || null;

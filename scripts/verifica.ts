@@ -881,3 +881,71 @@ test('lo stesso ordine con il collo residuo davvero in viaggio torna da monitora
   assert.equal(o.presaAt, '2026-08-31T09:00:00+02:00', 'la data e’ quella del collo che viaggia');
   assert.deepEqual(o.alertMagazzino, []);
 });
+
+/* ---------- displayStatus batte un riassunto fermo (07/09) ---------- */
+test('caso 26CKPT2972: riassunto vecchio dice “nessun evento”, Shopify dice “in consegna”', () => {
+  /* Dati reali. Il riassunto e' stato scritto dal percorso `creazione` l’1/09 con
+     presaAt null e numeroEventi 0, e da allora non e’ piu’ stato aggiornato. Sullo
+     stesso fulfillment Shopify dice OUT_FOR_DELIVERY. Prima l’ordine risultava “da
+     spedire, collo fermo in magazzino” mentre il pacco era sul furgone. */
+  const snapshotFermo = JSON.stringify({
+    v: 1, aggiornatoIl: '2026-09-01T18:16:53.825Z', sorgente: 'creazione',
+    spedizioni: [{
+      fulfillmentId: 'gid://shopify/Fulfillment/8357143019869',
+      tracking: '3UW1JS2039094', corriere: 'Poste Italiane',
+      trackAt: '2026-09-01T18:16:49Z', presaAt: null, presaStatus: null,
+      presaApprossimata: false, consegnaAt: null, ultimoEventoAt: null,
+      ultimoEventoStatus: null, ultimoEventoMessaggio: null, ultimoEventoLuogo: null,
+      numeroEventi: 0
+    }]
+  });
+  const o = classifica(ordine({
+    createdAt: '2026-08-27T10:59:36Z',
+    displayFulfillmentStatus: 'FULFILLED',
+    tags: ['codice_soc=SPORTINGC2627', 'soc_nome=SPORTING CASTELLANA',
+           'soc_categoria=ESORDIENTI 2014', 'soc_atleta=Manuel Pascolo',
+           'spedizione_prevista=2026-09-11'],
+    snapshot: { value: snapshotFermo, updatedAt: '2026-09-01T18:16:53Z' },
+    fulfillments: [{
+      id: 'gid://shopify/Fulfillment/8357143019869', createdAt: '2026-09-01T18:16:49Z',
+      status: 'SUCCESS', displayStatus: 'OUT_FOR_DELIVERY',
+      trackingInfo: [{ number: '3UW1JS2039094', company: 'Poste Italiane', url: null }]
+    } as any]
+  }), CONFIG_DEFAULT, new Date('2026-09-07T10:00:00+02:00'));
+
+  assert.equal(o.fase, 'da_monitorare', 'il collo si muove: non e’ piu’ roba da spedire');
+  assert.equal(o.stato, 'in_consegna');
+  assert.equal(o.faseRitiro, 'preso_in_carico');
+  assert.deepEqual(o.alertMagazzino, [], 'non e’ un collo fermo in magazzino');
+  assert.deepEqual(o.alertSpedizione, [], 'e non e’ nemmeno un problema del corriere');
+  assert.equal(o.presaAt, null, 'la DATA non si inventa: il riassunto non ce l’ha');
+  assert.equal(o.etaMax, null, 'senza data di ritiro non si calcola una finestra');
+  assert.equal(o.ritardoGG, 0, 'e senza finestra non si puo’ essere in ritardo');
+});
+
+test('FULFILLED non e’ prova di uscita: il collo puo’ essere ancora sul bancone', () => {
+  const o = classifica(ordine({
+    displayFulfillmentStatus: 'FULFILLED',
+    fulfillments: [senzaEventi('f1', 'SUL-BANCONE', '2026-08-06T14:30:50Z') as any]
+  }), CONFIG_DEFAULT, ORA);
+  assert.equal(o.fase, 'da_spedire');
+  assert.ok(o.alertMagazzino.some(a => a.causa === 'collo_non_partito'));
+});
+
+test('gli eventi del riassunto, quando ci sono, restano la fonte piu’ precisa', () => {
+  const o = classifica(ordine({
+    displayFulfillmentStatus: 'FULFILLED',
+    fulfillments: [{
+      id: 'f1', createdAt: '2026-08-24T12:00:00+02:00', status: 'SUCCESS',
+      displayStatus: 'IN_TRANSIT',
+      trackingInfo: [{ number: 'PRECISO', company: 'Poste Italiane', url: null }],
+      events: { nodes: [
+        evento('CARRIER_PICKED_UP', '2026-08-30T17:00:00+02:00', 'Ritirata'),
+        evento('DELAYED', '2026-08-31T08:00:00+02:00', 'Merce in giacenza presso la filiale')
+      ] }
+    } as any]
+  }), CONFIG_DEFAULT, ORA);
+  assert.equal(o.stato, 'giacenza', 'il testo del corriere raffina, displayStatus non lo copre');
+  assert.equal(o.presaAt, '2026-08-30T17:00:00+02:00', 'con gli eventi la data c’e’ davvero');
+  assert.ok(o.etaMax, 'e la finestra di consegna si puo’ calcolare');
+});
